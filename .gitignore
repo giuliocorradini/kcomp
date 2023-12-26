@@ -1,0 +1,9 @@
+# Ignore compilation objects
+driver.o
+scanner.o
+parser.o
+kcomp.o
+kcomp
+scanner.cpp
+parser.cpp
+parser.hpp

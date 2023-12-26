@@ -8,13 +8,14 @@ Giulio Corradini - a.a. 2023-2024
 
 È richiesto LLVM (versione minima 16), flex e bison.
 
-Su macOS è necesasrio installare il pacchetto `llvm` da brew, mentre le utility `flex` e `bison` sono già incluse con gli `xcode-command-line-tools`.
+Su macOS è necesasrio installare i pacchetti `bison` e `llvm` da brew. `flex` è già fornito dal sistema operativo (anche bison, ma è necessaria
+una versione non inferiore alla 3.2).
 Prima di compilare bisogna impostare come compilatore la versione di clang fornita col pacchetto `llvm` di brew. Per fare questo basta aggiungere al
 proprio PATH la directory che contiene i binari di llvm.
 
 ```sh
-brew install llvm
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+brew install llvm bison
+export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/bison/bin:$PATH"
 ```
 
 Il Makefile del progetto, quando riconosce che si sta utilizzando macOS, chiama automaticamente uno script che contiene quella ridefinizione del PATH.

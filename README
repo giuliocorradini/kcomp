@@ -1,0 +1,47 @@
+# kcomp
+
+Progetto di Linguaggi e Compilatori.
+
+Giulio Corradini - a.a. 2023-2024
+
+## Prerequisiti
+
+È richiesto LLVM (versione minima 16), flex e bison.
+
+Su macOS è necesasrio installare il pacchetto `llvm` da brew, mentre le utility `flex` e `bison` sono già incluse con gli `xcode-command-line-tools`.
+Prima di compilare bisogna impostare come compilatore la versione di clang fornita col pacchetto `llvm` di brew. Per fare questo basta aggiungere al
+proprio PATH la directory che contiene i binari di llvm.
+
+```sh
+brew install llvm
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+```
+
+Il Makefile del progetto, quando riconosce che si sta utilizzando macOS, chiama automaticamente uno script che contiene quella ridefinizione del PATH.
+
+## Compilare kcomp
+
+Per compilare kcomp chiamare il Makefile
+
+```sh
+make
+```
+
+## Eseguire
+
+Dato un sorgente Kaleidoscope in input, kcomp genera l'intermediate representation di LLVM in formato human readable e la restituisce su stderr.
+
+```sh
+./kcomp source.k
+```
+
+Per avere il risultato su un file basta redirezionare lo stream come segue:
+
+```sh
+./kcomp source.k 2> source.ll
+```
+
+## Lanciare programmi
+
+Una volta compilato un file sorgente di Kaleidoscope, posto che sia definita una funzione main, è possibile lanciare in esecuzione il codice, sia
+sfruttando l'interprete di llvm che producendo un file eseguibile.

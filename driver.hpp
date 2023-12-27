@@ -152,4 +152,36 @@ public:
   Function *codegen(driver& drv) override;
 };
 
+class AssignmentAST: public RootAST {
+
+};
+
+class BindingAST: public RootAST {
+
+};
+
+class BlockAST: public RootAST {
+
+};
+
+class ConditionalExprAST: public ExprAST {
+
+};
+
+class GlobalVarAST: public RootAST {
+
+};
+
+class IfExprAST: public ExprAST {
+
+};
+
+class StatementAST: public RootAST {
+
+};
+
+class AssignmentAST: public RootAST {
+
+};
+
 #endif // ! DRIVER_HH

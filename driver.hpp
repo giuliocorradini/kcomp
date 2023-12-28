@@ -152,36 +152,68 @@ public:
   Function *codegen(driver& drv) override;
 };
 
+class IfExprAST: public ExprAST {
+  private:
+  ExprAST *cond;   
+  ExprAST *trueexp;
+  ExprAST *falseexp;
+
+  public:
+  IfExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp);
+  Value *codegen(driver& drv) override;
+};
+
+class BlockExprAST: public ExprAST {
+  private:
+  std::vector<VarBindingAST *> Def;
+  ExprAST *Val;
+
+  public:
+  BlockExprAST(std::vector<VarBindingAST *>, ExprAST *);
+  Value *codegen(driver &drv) override;
+};
+
+class VarBindingAST: public RootAST {
+  private:
+  std::string Name;
+  ExprAST *Val;
+
+  public:
+  VarBindingAST(std::string Name, ExprAST *Val);
+  std::string &getName();
+  AllocaInst *codegen(driver& drv) override;
+};
+
 class AssignmentAST: public RootAST {
+  private:
+  std::string Id;
+  ExprAST *Val;
 
-};
-
-class BindingAST: public RootAST {
-
-};
-
-class BlockAST: public RootAST {
-
+  public:
+  AssignmentAST(std::string Id, ExprAST *Val);
+  Value * codegen(driver &drv) override;
 };
 
 class ConditionalExprAST: public ExprAST {
+  private:
+  ExprAST *cond;   
+  ExprAST *trueexp;
+  ExprAST *falseexp;
 
+  public:
+  ConditionalExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp);
+  Value *codegen(driver& drv) override;
 };
 
 class GlobalVarAST: public RootAST {
+  private:
+  std::string Name;
+  ExprAST *Val;
 
-};
-
-class IfExprAST: public ExprAST {
-
-};
-
-class StatementAST: public RootAST {
-
-};
-
-class AssignmentAST: public RootAST {
-
+  public:
+  GlobalVarAST(std::string Name, ExprAST *Val);
+  std::string &getName();
+  AllocaInst *codegen(driver& drv) override;
 };
 
 #endif // ! DRIVER_HH

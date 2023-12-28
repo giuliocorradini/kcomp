@@ -8,7 +8,7 @@
 %define parse.assert
 
 %code requires {
-  # include <string>
+  #include <string>
   #include <exception>
   class driver;
   class RootAST;
@@ -19,6 +19,12 @@
   class FunctionAST;
   class SeqAST;
   class PrototypeAST;
+  class BlockExprAST;
+  class VarBindingAST;
+  class ConditionalExprAST;
+  class GlobalVarAST;
+  class AssignmentAST;
+  class IfExprAST;
 }
 
 // The parsing context.
@@ -68,15 +74,15 @@
 %type <PrototypeAST*> proto
 %type <std::vector<std::string>> idseq
 %type <GlobalVarAST *> globalvar
-%type <StatementAST *> stmt
-%type <std::vector<StatementAST *> > stmts;
-%type <AssignmentAST *> assignment;
-%type <BlockAST *> block;
-%type <std::vector<BindingAST *> > vardefs;
-%type <BindingAST *> binding;
-%type <IfExprAST *> expif;
-%type <ConditionalExprAST *> condexp;
-%type <ExprAST *> initexp;
+%type <RootAST *> stmt
+%type <std::vector<RootAST *> > stmts
+%type <AssignmentAST *> assignment
+%type <BlockExprAST *> block
+%type <std::vector<VarBindingAST *> > vardefs
+%type <VarBindingAST *> binding
+%type <IfExprAST *> expif
+%type <ConditionalExprAST *> condexp
+%type <ExprAST *> initexp
 %%
 %start startsymb;
 
@@ -117,7 +123,7 @@ idseq:
 
 stmts:
   stmt                  { 
-                          std::vector<StatementAST *> statements;
+                          std::vector<RootAST *> statements;
                           statements.push_back($1);
                           $$ = statements;
                         }
@@ -132,15 +138,15 @@ assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
 
 block:
-  "{" stmts "}"               { $$ = new BlockAST(nullptr, $2); }
-| "{" vardefs ";" stmts "}"   { $$ = new BlockAST($2, $4); }
+  "{" stmts "}"               { $$ = new BlockExprAST(nullptr, $2); }
+| "{" vardefs ";" stmts "}"   { $$ = new BlockExprAST($2, $4); }
 
 vardefs:
-  binding               { std::vector<BindingAST *> bindings; bindings.push_back($1); $$ = bindings; }
+  binding               { std::vector<VarBindingAST *> bindings; bindings.push_back($1); $$ = bindings; }
 | vardefs ";" binding   { $1.push_back($3); $$ = $1; }
 
 binding:
-  "var" "id" initexp    { $$ = new BindingAST($2, $3); }
+  "var" "id" initexp    { $$ = new VarBindingAST($2, $3); }
 
 exp:
   exp "+" exp           { $$ = new BinaryExprAST('+',$1,$3); }

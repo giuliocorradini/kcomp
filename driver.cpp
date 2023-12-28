@@ -298,3 +298,110 @@ Function *FunctionAST::codegen(driver& drv) {
   return nullptr;
 };
 
+IfExprAST::IfExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp) :
+cond(cond), trueexp(trueexp), falseexp(falseexp) {}
+
+Value * IfExprAST::codegen(driver& drv)
+{
+  // Valutiamo la condizione
+  Value *condv = cond->codegen(drv); //deve restituire un booleano, quindi un i1
+  if (not condv)
+    return nullptr;
+
+  // Dove mandiamo l'istruzione di branch condizionato? Generiamo prima i blocchi.
+  // Dobbiamo prima trovare il riferimento alla funzione in cui inserirlo.
+  Function *fun = builder->GetInsertBlock()->getParent();   // < la funzione corrente
+  BasicBlock *TrueBB = BasicBlock::Create(*context, "trueblock", fun);
+  BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
+  BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
+
+  builder->CreateCondBr(condv, TrueBB, FalseBB);
+
+  // Posso cominciare a generare la parte true
+  // Cambiamo blocco del builder.
+  builder->SetInsertPoint(TrueBB);
+
+  Value *TrueV = trueexp->codegen(drv);  // codegen chiama il builder e inserisce il codice
+  if (not TrueV)
+    return nullptr;
+  
+  TrueBB = builder->GetInsertBlock();
+  builder->CreateBr(MergeBB);
+
+  // Possiamo inserire il blocck false.
+  fun->insert(fun->end(), FalseBB);  // inserisci il blocco alla fine della funzione
+  builder->SetInsertPoint(FalseBB);
+
+  Value *FalseV = falseexp->codegen(drv);
+  if (not FalseV)
+    return nullptr;
+
+  // Come true, anche false potrebbe essersi ulteriormente suddiviso. Sarebbe inutile se i blocchi fossero
+  // monolitici, ma non lo sono.
+  FalseBB = builder->GetInsertBlock();
+  builder->CreateBr(MergeBB);
+
+  // Inseriamo il merge block
+  fun->insert(fun->end(), MergeBB);
+  builder->SetInsertPoint(MergeBB);
+
+  // Riunione dei flussi. PHINode è un particolare value.
+  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
+                                                                    // numero di flussi che riunisce PHI
+  P->addIncoming(TrueV, TrueBB);
+  P->addIncoming(FalseV, FalseBB);
+
+  return P;
+}
+
+/***** Block Expression Tree *****/
+
+BlockExprAST::BlockExprAST(std::vector<VarBindingAST *> Def, ExprAST *Val): Def(std::move(Def)), Val(Val) {}
+
+Value * BlockExprAST::codegen(driver &drv) {
+  // Per ogni che compare già nella symbol table, dobbiamo sostituirlo.
+  // Teniamo traccia dei valori che sostituiamo
+  std::vector<AllocaInst *> tmp;
+
+  for (int i=0, e=Def.size(); i<e; i++) {
+    AllocaInst *boundval = Def[i]->codegen(drv);
+    if (not boundval)
+      return nullptr;
+
+    tmp.push_back(drv.NamedValues[Def[i]->getName()]);
+    drv.NamedValues[Def[i]->getName()] = boundval;
+  }
+
+  Value *blockvalue = Val->codegen(drv);
+  for (int i=0, e=Def.size(); i<e; i++) {
+    drv.NamedValues[Def[i]->getName()] = tmp[i];
+  }
+
+  return blockvalue;
+}
+
+
+VarBindingAST::VarBindingAST(std::string Name, ExprAST *Val): Name(Name), Val(Val) {}
+
+std::string & VarBindingAST::getName() {
+  return Name;
+}
+
+AllocaInst * VarBindingAST::codegen(driver &drv) {
+  Function *fun = builder->GetInsertBlock()->getParent();
+  Value *ExpVal = Val->codegen(drv);
+  AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
+
+  if (not ExpVal or not alloc)
+    return nullptr;
+
+  builder->CreateStore(ExpVal, alloc);
+
+  return alloc;
+}
+
+AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
+
+Value * AssignmentAST::codegen(driver &drv) {
+  return nullptr;
+}

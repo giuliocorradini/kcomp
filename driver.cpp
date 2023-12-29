@@ -356,12 +356,12 @@ Value * IfExprAST::codegen(driver& drv)
 
 /***** Block Expression Tree *****/
 
-BlockExprAST::BlockExprAST(std::vector<VarBindingAST *> Def, ExprAST *Val): Def(std::move(Def)), Val(Val) {}
+BlockAST::BlockAST(std::vector<VarBindingAST *> Bindings, std::vector<ExprAST *> Statements): Bindings(std::move(Bindings)), Statements(std::move(Statements)) {}
 
-Value * BlockExprAST::codegen(driver &drv) {
+Value * BlockAST::codegen(driver &drv) {
   // Per ogni che compare già nella symbol table, dobbiamo sostituirlo.
   // Teniamo traccia dei valori che sostituiamo
-  std::vector<AllocaInst *> tmp;
+  /*std::vector<AllocaInst *> tmp;
 
   for (int i=0, e=Def.size(); i<e; i++) {
     AllocaInst *boundval = Def[i]->codegen(drv);
@@ -377,7 +377,8 @@ Value * BlockExprAST::codegen(driver &drv) {
     drv.NamedValues[Def[i]->getName()] = tmp[i];
   }
 
-  return blockvalue;
+  return blockvalue;*/
+  return nullptr;
 }
 
 
@@ -403,5 +404,18 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
 
 Value * AssignmentAST::codegen(driver &drv) {
+  return nullptr;
+}
+
+GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {
+
+}
+
+ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp):
+kind(kind), trueexp(trueexp), falseexp(falseexp) {
+  
+}
+
+Value * ConditionalExprAST::codegen(driver& drv) {
   return nullptr;
 }

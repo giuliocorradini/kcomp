@@ -163,13 +163,13 @@ class IfExprAST: public ExprAST {
   Value *codegen(driver& drv) override;
 };
 
-class BlockExprAST: public ExprAST {
+class BlockAST: public ExprAST {
   private:
-  std::vector<VarBindingAST *> Def;
-  ExprAST *Val;
+  std::vector<VarBindingAST *> Bindings;
+  std::vector<ExprAST *> Statements;
 
   public:
-  BlockExprAST(std::vector<VarBindingAST *>, ExprAST *);
+  BlockAST(std::vector<VarBindingAST *>, std::vector<ExprAST *>);
   Value *codegen(driver &drv) override;
 };
 
@@ -184,7 +184,7 @@ class VarBindingAST: public RootAST {
   AllocaInst *codegen(driver& drv) override;
 };
 
-class AssignmentAST: public RootAST {
+class AssignmentAST: public ExprAST {
   private:
   std::string Id;
   ExprAST *Val;
@@ -196,22 +196,21 @@ class AssignmentAST: public RootAST {
 
 class ConditionalExprAST: public ExprAST {
   private:
-  ExprAST *cond;   
+  char kind;   
   ExprAST *trueexp;
   ExprAST *falseexp;
 
   public:
-  ConditionalExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp);
+  ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp);
   Value *codegen(driver& drv) override;
 };
 
 class GlobalVarAST: public RootAST {
   private:
   std::string Name;
-  ExprAST *Val;
 
   public:
-  GlobalVarAST(std::string Name, ExprAST *Val);
+  GlobalVarAST(std::string Name);
   std::string &getName();
   AllocaInst *codegen(driver& drv) override;
 };

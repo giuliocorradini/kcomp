@@ -19,7 +19,7 @@
   class FunctionAST;
   class SeqAST;
   class PrototypeAST;
-  class BlockExprAST;
+  class BlockAST;
   class VarBindingAST;
   class ConditionalExprAST;
   class GlobalVarAST;
@@ -50,12 +50,13 @@
   SLASH      "/"
   LPAREN     "("
   RPAREN     ")"
-  RCURBRACK  "}"
-  LCURBRACK  "{"
-  QSTMARK    "?"
+  RBRACE     "}"
+  LBRACE     "{"
+  QMARK      "?"
   COLON      ":"
-  EQUALS     "="
-  COMPEQ     "=="
+  ASSIGN     "="
+  LT         "<"
+  EQ         "=="
   EXTERN     "extern"
   DEF        "def"
   VAR        "var"
@@ -63,10 +64,9 @@
 
 %token <std::string> IDENTIFIER "id"
 %token <double> NUMBER "number"
-%type <ExprAST*> exp
-%type <ExprAST*> idexp
-%type <std::vector<ExprAST*>> optexp
-%type <std::vector<ExprAST*>> explist
+%type <ExprAST*> exp idexp stmt initexp
+%type <std::vector<ExprAST*>> optexp explist
+%type <std::vector<RootAST *>> stmts
 %type <RootAST*> program
 %type <RootAST*> top
 %type <FunctionAST*> definition
@@ -74,15 +74,12 @@
 %type <PrototypeAST*> proto
 %type <std::vector<std::string>> idseq
 %type <GlobalVarAST *> globalvar
-%type <RootAST *> stmt
-%type <std::vector<RootAST *> > stmts
-%type <AssignmentAST *> assignment
-%type <BlockExprAST *> block
-%type <std::vector<VarBindingAST *> > vardefs
-%type <VarBindingAST *> binding
+%type <BlockAST *> block
 %type <IfExprAST *> expif
 %type <ConditionalExprAST *> condexp
-%type <ExprAST *> initexp
+%type <AssignmentAST *> assignment
+%type <VarBindingAST *> binding
+%type <std::vector<VarBindingAST *> > vardefs
 %%
 %start startsymb;
 
@@ -138,8 +135,8 @@ assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
 
 block:
-  "{" stmts "}"               { $$ = new BlockExprAST(nullptr, $2); }
-| "{" vardefs ";" stmts "}"   { $$ = new BlockExprAST($2, $4); }
+  "{" stmts "}"               { $$ = new BlockAST({}, $2); }
+| "{" vardefs ";" stmts "}"   { $$ = new BlockAST($2, $4); }
 
 vardefs:
   binding               { std::vector<VarBindingAST *> bindings; bindings.push_back($1); $$ = bindings; }

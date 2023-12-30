@@ -1,6 +1,9 @@
 #include "driver.hpp"
 #include "parser.hpp"
 
+#include <iostream>
+using namespace std;
+
 // Generazione di un'istanza per ciascuna della classi LLVMContext,
 // Module e IRBuilder. Nel caso di singolo modulo è sufficiente
 LLVMContext *context = new LLVMContext;
@@ -356,29 +359,39 @@ Value * IfExprAST::codegen(driver& drv)
 
 /***** Block Expression Tree *****/
 
-BlockAST::BlockAST(std::vector<VarBindingAST *> Bindings, std::vector<ExprAST *> Statements): Bindings(std::move(Bindings)), Statements(std::move(Statements)) {}
+BlockAST::BlockAST(std::vector<RootAST *> Statements): Statements(std::move(Statements)) {}
+
+BlockAST::BlockAST(std::vector<VarBindingAST *> Bindings, std::vector<RootAST *> Statements): Bindings(std::move(Bindings)), Statements(std::move(Statements)) {}
 
 Value * BlockAST::codegen(driver &drv) {
-  // Per ogni che compare già nella symbol table, dobbiamo sostituirlo.
-  // Teniamo traccia dei valori che sostituiamo
-  /*std::vector<AllocaInst *> tmp;
+  //  A block is made of both variable definitions (local to the block) and statements
+  //  Bindings can shadow variables, thus they must be replaced before generating code for
+  //  the statements.
 
-  for (int i=0, e=Def.size(); i<e; i++) {
-    AllocaInst *boundval = Def[i]->codegen(drv);
-    if (not boundval)
-      return nullptr;
+  std::vector<AllocaInst *> shadowed;
 
-    tmp.push_back(drv.NamedValues[Def[i]->getName()]);
-    drv.NamedValues[Def[i]->getName()] = boundval;
+  for (auto bind: Bindings) {
+    AllocaInst *boundVal = bind->codegen(drv);
+    if (not boundVal)
+      return nullptr; // invalid binding
+
+    auto savedVar = drv.NamedValues.find(bind->getName());
+    if (savedVar != drv.NamedValues.end())
+      shadowed.push_back(savedVar->second);
   }
 
-  Value *blockvalue = Val->codegen(drv);
-  for (int i=0, e=Def.size(); i<e; i++) {
-    drv.NamedValues[Def[i]->getName()] = tmp[i];
+  for (auto stptr = Statements.begin(); stptr < Statements.end() - 1; stptr++) {
+    (*stptr)->codegen(drv);
   }
+  Value *retVal = Statements.back()->codegen(drv);
 
-  return blockvalue;*/
-  return nullptr;
+  auto sptr = shadowed.begin();
+  for (auto bind: Bindings) {
+    drv.NamedValues[bind->getName()] = *sptr;
+    sptr++;
+  }
+  
+  return retVal;
 }
 
 
@@ -407,8 +420,21 @@ Value * AssignmentAST::codegen(driver &drv) {
   return nullptr;
 }
 
-GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {
+GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
 
+Value * GlobalVarAST::codegen(driver &drv) {
+  //  Find out if the variable is already defined
+  auto vp = drv.Globals.find(Name);
+  if (vp != drv.Globals.end()) {
+    cout << "Variable " << Name << " is already defined." << endl;
+    return nullptr;
+  }
+
+  GlobalVariable *var = new GlobalVariable(Type::getDoubleTy(*context), false, GlobalVariable::ExternalLinkage, nullptr, Name);
+
+  drv.Globals[Name] = var;
+
+  return var;
 }
 
 ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp):

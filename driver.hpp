@@ -36,10 +36,16 @@ class driver
 {
 public:
   driver();
-  std::map<std::string, AllocaInst *> NamedValues; // Tabella associativa in cui ogni 
-            // chiave x è una variabile e il cui corrispondente valore è un'istruzione 
-            // che alloca uno spazio di memoria della dimensione necessaria per 
-            // memorizzare un variabile del tipo di x (nel nostro caso solo double)
+  std::map<std::string, AllocaInst *> NamedValues; // < Symbol table
+            /**
+             * Tabella associativa in cui ogni 
+             * chiave x è una variabile e il cui corrispondente valore è un'istruzione 
+             * che alloca uno spazio di memoria della dimensione necessaria per 
+             * memorizzare un variabile del tipo di x (nel nostro caso solo double)
+             */
+
+  std::map<std::string, Value *> Globals;
+
   RootAST* root;      // A fine parsing "punta" alla radice dell'AST
   int parse (const std::string& f);
   std::string file;
@@ -166,10 +172,11 @@ class IfExprAST: public ExprAST {
 class BlockAST: public ExprAST {
   private:
   std::vector<VarBindingAST *> Bindings;
-  std::vector<ExprAST *> Statements;
+  std::vector<RootAST *> Statements;
 
   public:
-  BlockAST(std::vector<VarBindingAST *>, std::vector<ExprAST *>);
+  BlockAST(std::vector<RootAST *>);
+  BlockAST(std::vector<VarBindingAST *>, std::vector<RootAST *>);
   Value *codegen(driver &drv) override;
 };
 
@@ -212,7 +219,7 @@ class GlobalVarAST: public RootAST {
   public:
   GlobalVarAST(std::string Name);
   std::string &getName();
-  AllocaInst *codegen(driver& drv) override;
+  Value *codegen(driver& drv) override;
 };
 
 #endif // ! DRIVER_HH

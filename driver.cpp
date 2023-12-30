@@ -107,9 +107,14 @@ lexval VariableExprAST::getLexVal() const {
 // il nome del registro in cui verrà trasferito il valore dalla memoria
 Value *VariableExprAST::codegen(driver& drv) {
   AllocaInst *A = drv.NamedValues[Name];
-  if (!A)
-     return LogErrorV("Variabile non definita");
-  return builder->CreateLoad(A->getAllocatedType(), A, Name.c_str());
+  if (A)
+    return builder->CreateLoad(A->getAllocatedType(), A, Name.c_str());
+  
+  GlobalVariable *G = drv.Globals[Name];
+  if (G)
+    return builder->CreateLoad(G->getType(), G, Name.c_str());
+
+  return LogErrorV("Variabile non definita");
 }
 
 /******************** Binary Expression Tree **********************/
@@ -417,7 +422,20 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
 
 Value * AssignmentAST::codegen(driver &drv) {
-  return nullptr;
+  Value *rval = Val->codegen(drv);
+
+  //  Search variable in local table
+  Value *ptr = drv.NamedValues[Id];
+  if (not ptr) {
+    //  Resolve global table
+    ptr = drv.Globals[Id];
+
+    if (not ptr) {
+      return nullptr;
+    }
+  }
+
+  return builder->CreateStore(rval, ptr, false);
 }
 
 GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
@@ -438,9 +456,7 @@ Value * GlobalVarAST::codegen(driver &drv) {
 }
 
 ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp):
-kind(kind), trueexp(trueexp), falseexp(falseexp) {
-  
-}
+kind(kind), trueexp(trueexp), falseexp(falseexp) {}
 
 Value * ConditionalExprAST::codegen(driver& drv) {
   return nullptr;

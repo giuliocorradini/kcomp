@@ -44,7 +44,7 @@ public:
              * memorizzare un variabile del tipo di x (nel nostro caso solo double)
              */
 
-  std::map<std::string, Value *> Globals;
+  std::map<std::string, GlobalVariable *> Globals;
 
   RootAST* root;      // A fine parsing "punta" alla radice dell'AST
   int parse (const std::string& f);

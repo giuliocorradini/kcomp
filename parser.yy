@@ -58,6 +58,7 @@
   LT         "<"
   EQ         "=="
   EXTERN     "extern"
+  GLOBAL     "global"
   DEF        "def"
   VAR        "var"
 ;

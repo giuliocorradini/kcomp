@@ -135,7 +135,7 @@ assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
 
 block:
-  "{" stmts "}"               { $$ = new BlockAST({}, $2); }
+  "{" stmts "}"               { $$ = new BlockAST($2); }
 | "{" vardefs ";" stmts "}"   { $$ = new BlockAST($2, $4); }
 
 vardefs:

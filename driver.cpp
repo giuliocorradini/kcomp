@@ -418,7 +418,7 @@ std::string & VarBindingAST::getName() {
   return Name;
 }
 
-Value * VarBindingAST::codegen(driver &drv) {
+AllocaInst * VarBindingAST::codegen(driver &drv) {
   Function *fun = builder->GetInsertBlock()->getParent();
   Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
@@ -430,7 +430,7 @@ Value * VarBindingAST::codegen(driver &drv) {
 
   builder->CreateStore(ExpVal, alloc);
 
-  return ExpVal;
+  return alloc;
 }
 
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
@@ -480,7 +480,7 @@ Value * ConditionalExprAST::codegen(driver& drv) {
   if (kind == '=') {
     ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OEQ, lhsVal, rhsVal); // Ordered compare expects both sides to be valid numbers, not NaNs
   } else if (kind == '<') {
-    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OEQ, lhsVal, rhsVal);
+    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OLT, lhsVal, rhsVal);
   } else {
     return LogErrorV("Compare operand not supported");
   }

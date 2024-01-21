@@ -112,9 +112,9 @@ Value *VariableExprAST::codegen(driver& drv) {
   
   GlobalVariable *G = module->getGlobalVariable(Name);
   if (G)
-    return builder->CreateLoad(G->getType(), G, Name.c_str());
+    return builder->CreateLoad(G->getValueType(), G, Name.c_str());
 
-  return LogErrorV("Variabile non definita");
+  return LogErrorV("Undeclared variable");
 }
 
 /******************** Binary Expression Tree **********************/
@@ -463,7 +463,11 @@ Constant * GlobalVarAST::codegen(driver &drv) {
   if(module->getGlobalVariable(Name))
     return (GlobalVariable *)LogErrorV("Global variable already defined");
 
-  Constant *var = module->getOrInsertGlobal(Name, Type::getDoubleTy(*context));
+  auto contextDouble = Type::getDoubleTy(*context);
+  GlobalVariable *var = new GlobalVariable(*module, contextDouble, false, GlobalValue::CommonLinkage, Constant::getNullValue(contextDouble), Name);
+
+  var->print(errs()); // Output variable definition on stderr
+  cerr << endl;
 
   return var;
 }

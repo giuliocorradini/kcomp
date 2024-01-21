@@ -44,8 +44,6 @@ public:
              * memorizzare un variabile del tipo di x (nel nostro caso solo double)
              */
 
-  std::map<std::string, GlobalVariable *> Globals;
-
   RootAST* root;      // A fine parsing "punta" alla radice dell'AST
   int parse (const std::string& f);
   std::string file;
@@ -203,12 +201,12 @@ class AssignmentAST: public ExprAST {
 
 class ConditionalExprAST: public ExprAST {
   private:
-  char kind;   
-  ExprAST *trueexp;
-  ExprAST *falseexp;
+  char kind;   // < Can be `<` or `=`
+  ExprAST *leftoperand;
+  ExprAST *rightoperand;
 
   public:
-  ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp);
+  ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
   Value *codegen(driver& drv) override;
 };
 
@@ -219,7 +217,7 @@ class GlobalVarAST: public RootAST {
   public:
   GlobalVarAST(std::string Name);
   std::string &getName();
-  Value *codegen(driver& drv) override;
+  Constant *codegen(driver& drv) override;
 };
 
 #endif // ! DRIVER_HH

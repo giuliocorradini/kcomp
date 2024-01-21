@@ -110,7 +110,7 @@ Value *VariableExprAST::codegen(driver& drv) {
   if (A)
     return builder->CreateLoad(A->getAllocatedType(), A, Name.c_str());
   
-  GlobalVariable *G = drv.Globals[Name];
+  GlobalVariable *G = module->getGlobalVariable(Name);
   if (G)
     return builder->CreateLoad(G->getType(), G, Name.c_str());
 
@@ -245,8 +245,10 @@ Function *PrototypeAST::codegen(driver& drv) {
 FunctionAST::FunctionAST(PrototypeAST* Proto, ExprAST* Body): Proto(Proto), Body(Body) {};
 
 Function *FunctionAST::codegen(driver& drv) {
+  cout << "Defining " << get<string>(Proto->getLexVal()) << endl;
+
   // Verifica che la funzione non sia già presente nel modulo, cioò che non
-  // si tenti una "doppia definizion"
+  // si tenti una "doppia definizione"
   Function *function = 
       module->getFunction(std::get<std::string>(Proto->getLexVal()));
   // Se la funzione non è già presente, si prova a definirla, innanzitutto
@@ -314,7 +316,7 @@ Value * IfExprAST::codegen(driver& drv)
   // Valutiamo la condizione
   Value *condv = cond->codegen(drv); //deve restituire un booleano, quindi un i1
   if (not condv)
-    return nullptr;
+    return LogErrorV("Codegen for condexp returned nullptr");
 
   // Dove mandiamo l'istruzione di branch condizionato? Generiamo prima i blocchi.
   // Dobbiamo prima trovare il riferimento alla funzione in cui inserirlo.
@@ -373,30 +375,44 @@ Value * BlockAST::codegen(driver &drv) {
   //  Bindings can shadow variables, thus they must be replaced before generating code for
   //  the statements.
 
-  std::vector<AllocaInst *> shadowed;
+  std::map<std::string, AllocaInst *> shadowed;
 
   for (auto bind: Bindings) {
+    std::string const &name = bind->getName();
     AllocaInst *boundVal = bind->codegen(drv);
-    if (not boundVal)
-      return nullptr; // invalid binding
+    if (not boundVal) {
+      return LogErrorV("Invalid variable binding"); // invalid binding
+    }
 
-    auto savedVar = drv.NamedValues.find(bind->getName());
-    if (savedVar != drv.NamedValues.end())
-      shadowed.push_back(savedVar->second);
+    auto alloc = drv.NamedValues[name];
+    if (alloc)
+      shadowed[name] = alloc;
+
+    drv.NamedValues[name] = boundVal;
+    //TODO: do we need to shadow a global variable? Local are always checked first...
   }
 
-  for (auto stptr = Statements.begin(); stptr < Statements.end() - 1; stptr++) {
-    (*stptr)->codegen(drv);
-  }
-  Value *retVal = Statements.back()->codegen(drv);
+  cout << "New variables bound" << endl;
 
-  auto sptr = shadowed.begin();
+  Value *ret;
+  for (auto stmt: Statements) {
+    ret = stmt->codegen(drv);
+    if (not ret)
+      return LogErrorV("Error in generating calls for block");
+    
+  }
+
+  cout << "Statements generated" << endl;
+
   for (auto bind: Bindings) {
-    drv.NamedValues[bind->getName()] = *sptr;
-    sptr++;
+    drv.NamedValues.erase(bind->getName());
   }
+
+  drv.NamedValues.merge(shadowed);
+
+  cout << "Recovered shadowed variables" << endl;
   
-  return retVal;
+  return ret;
 }
 
 
@@ -410,6 +426,8 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
   Function *fun = builder->GetInsertBlock()->getParent();
   Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
+
+  cout << "Var binding of " << Name << endl;
 
   if (not ExpVal or not alloc)
     return nullptr;
@@ -428,10 +446,10 @@ Value * AssignmentAST::codegen(driver &drv) {
   Value *ptr = drv.NamedValues[Id];
   if (not ptr) {
     //  Resolve global table
-    ptr = drv.Globals[Id];
+    ptr = module->getGlobalVariable(Id);
 
     if (not ptr) {
-      return nullptr;
+      return LogErrorV("Variable not declared.");
     }
   }
 
@@ -440,24 +458,32 @@ Value * AssignmentAST::codegen(driver &drv) {
 
 GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
 
-Value * GlobalVarAST::codegen(driver &drv) {
+Constant * GlobalVarAST::codegen(driver &drv) {
   //  Find out if the variable is already defined
-  auto vp = drv.Globals.find(Name);
-  if (vp != drv.Globals.end()) {
-    cout << "Variable " << Name << " is already defined." << endl;
-    return nullptr;
-  }
+  if(module->getGlobalVariable(Name))
+    return (GlobalVariable *)LogErrorV("Global variable already defined");
 
-  GlobalVariable *var = new GlobalVariable(Type::getDoubleTy(*context), false, GlobalVariable::ExternalLinkage, nullptr, Name);
-
-  drv.Globals[Name] = var;
+  Constant *var = module->getOrInsertGlobal(Name, Type::getDoubleTy(*context));
 
   return var;
 }
 
-ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *trueexp, ExprAST *falseexp):
-kind(kind), trueexp(trueexp), falseexp(falseexp) {}
+ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
+kind(kind), leftoperand(leftoperand), rightoperand(rightoperand) {}
 
 Value * ConditionalExprAST::codegen(driver& drv) {
-  return nullptr;
+  Value *lhsVal = leftoperand->codegen(drv);
+  Value *rhsVal = rightoperand->codegen(drv);
+
+  Value *ret;
+
+  if (kind == '=') {
+    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OEQ, lhsVal, rhsVal); // Ordered compare expects both sides to be valid numbers, not NaNs
+  } else if (kind == '<') {
+    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OEQ, lhsVal, rhsVal);
+  } else {
+    return LogErrorV("Compare operand not supported");
+  }
+
+  return ret;
 }

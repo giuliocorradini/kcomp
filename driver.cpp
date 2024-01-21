@@ -392,26 +392,22 @@ Value * BlockAST::codegen(driver &drv) {
     //TODO: do we need to shadow a global variable? Local are always checked first...
   }
 
-  cout << "New variables bound" << endl;
-
   Value *ret;
-  for (auto stmt: Statements) {
+  for (auto stptr = Statements.rbegin(); stptr != Statements.rend(); stptr++) {
+    auto &stmt = *stptr;
     ret = stmt->codegen(drv);
     if (not ret)
       return LogErrorV("Error in generating calls for block");
-    
   }
 
-  cout << "Statements generated" << endl;
 
+  // Restore shadowed variables
   for (auto bind: Bindings) {
     drv.NamedValues.erase(bind->getName());
   }
 
   drv.NamedValues.merge(shadowed);
 
-  cout << "Recovered shadowed variables" << endl;
-  
   return ret;
 }
 
@@ -422,7 +418,7 @@ std::string & VarBindingAST::getName() {
   return Name;
 }
 
-AllocaInst * VarBindingAST::codegen(driver &drv) {
+Value * VarBindingAST::codegen(driver &drv) {
   Function *fun = builder->GetInsertBlock()->getParent();
   Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
@@ -434,7 +430,7 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
 
   builder->CreateStore(ExpVal, alloc);
 
-  return alloc;
+  return ExpVal;
 }
 
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}

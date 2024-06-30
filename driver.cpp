@@ -487,3 +487,102 @@ Value * ConditionalExprAST::codegen(driver& drv) {
 
   return ret;
 }
+
+IfStatementAST::IfStatementAST(ExprAST *cond, RootAST *truestmt): cond(cond), truestmt(truestmt), falsestmt(nullptr) {}
+IfStatementAST::IfStatementAST(ExprAST *cond, RootAST *truestmt, RootAST *falsestmt): cond(cond), truestmt(truestmt), falsestmt(falsestmt) {}
+
+Value * IfStatementAST::codegen(driver& drv) {
+  // Valutiamo la condizione
+  Value *condv = cond->codegen(drv); //deve restituire un booleano, quindi un i1
+  if (not condv)
+    return LogErrorV("Codegen for condexp returned nullptr");
+
+  Function *fun = builder->GetInsertBlock()->getParent();   // < la funzione corrente
+  BasicBlock *TrueBB = BasicBlock::Create(*context, "trueblock", fun);
+  BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
+  BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
+
+  PHINode *P;
+
+  if (falsestmt) {
+    builder->CreateCondBr(condv, TrueBB, FalseBB);
+
+    builder->SetInsertPoint(TrueBB);
+    Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
+    if (not TrueV)
+      return nullptr;
+    
+    TrueBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // If an "else" statement is specified, create another branch
+    fun->insert(fun->end(), FalseBB);  // inserisci il blocco alla fine della funzione
+    builder->SetInsertPoint(FalseBB);
+
+    Value *FalseV = falsestmt->codegen(drv);
+    if (not FalseV)
+      return nullptr;
+
+    // Come true, anche false potrebbe essersi ulteriormente suddiviso. Sarebbe inutile se i blocchi fossero
+    // monolitici, ma non lo sono.
+    FalseBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // Inseriamo il merge block
+    fun->insert(fun->end(), MergeBB);
+    builder->SetInsertPoint(MergeBB);
+
+    // Riunione dei flussi. PHINode è un particolare value.
+    P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
+                                                                      // numero di flussi che riunisce PHI
+    P->addIncoming(TrueV, TrueBB);
+    P->addIncoming(FalseV, FalseBB);
+  } else {
+    builder->CreateCondBr(condv, TrueBB, nullptr);
+
+    builder->SetInsertPoint(TrueBB);
+    Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
+    if (not TrueV)
+      return nullptr;
+    
+    TrueBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // Inseriamo il merge block
+    fun->insert(fun->end(), MergeBB);
+    builder->SetInsertPoint(MergeBB);
+
+    P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
+    P->addIncoming(TrueV, TrueBB);
+  }
+
+  return P;
+}
+
+ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
+init(init), cond(cond), update(update), stmt(stmt) {}
+
+Value * ForStatementAST::codegen(driver& drv) {
+  // Initialization
+  init->codegen(drv);
+
+  Function *fun = builder->GetInsertBlock()->getParent();
+  BasicBlock *iteration = BasicBlock::Create(*context, "foriteration", fun);
+  BasicBlock *endblock = BasicBlock::Create(*context, "endfor");
+
+  // Populate iteration block
+  //  with condition check
+  builder->SetInsertPoint(iteration);
+  Value *condval = cond->codegen(drv);
+  builder->CreateCondBr(condval, iteration, endblock);
+  stmt->codegen(drv);
+  update->codegen(drv);
+  builder->CreateBr(iteration);
+
+  fun->insert(fun->end(), endblock);
+  builder->SetInsertPoint(endblock);
+
+  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);
+
+  return P;
+}

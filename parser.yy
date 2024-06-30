@@ -25,6 +25,8 @@
   class GlobalVarAST;
   class AssignmentAST;
   class IfExprAST;
+  class IfStatementAST;
+  class ForStatementAST;
 }
 
 // The parsing context.
@@ -61,15 +63,18 @@
   GLOBAL     "global"
   DEF        "def"
   VAR        "var"
+  IF         "if"
+  FOR        "for"
+  INCREMENT  "++"
+  DECREMENT  "--"
 ;
 
 %token <std::string> IDENTIFIER "id"
 %token <double> NUMBER "number"
-%type <ExprAST*> exp idexp stmt initexp
+%type <ExprAST*> exp idexp initexp
 %type <std::vector<ExprAST*>> optexp explist
+%type <RootAST*> program top init stmt
 %type <std::vector<RootAST *>> stmts
-%type <RootAST*> program
-%type <RootAST*> top
 %type <FunctionAST*> definition
 %type <PrototypeAST*> external
 %type <PrototypeAST*> proto
@@ -81,6 +86,8 @@
 %type <AssignmentAST *> assignment
 %type <VarBindingAST *> binding
 %type <std::vector<VarBindingAST *> > vardefs
+%type <IfStatementAST *> ifstmt
+%type <ForStatementAST *> forstmt
 %%
 %start startsymb;
 
@@ -130,10 +137,27 @@ stmts:
 stmt:
   assignment            { $$ = $1; }
 | block                 { $$ = $1; }
+| ifstmt                { $$ = $1; }
+| forstmt               { $$ = $1; }
 | exp                   { $$ = $1; }
+
+ifstmt:
+  "if" "(" condexp ")" stmt                 { $$ = new IfStatementAST($3, $5); }
+| "if" "(" condexp ")" stmt "else" stmt     { $$ = new IfStatementAST($3, $5, $7); }
+
+forstmt:
+  "for" "(" init ";" condexp ";" assignment ")" stmt  { $$ = new ForStatementAST($3, $5, $7, $9); }
+
+init:
+  binding               { $$ = $1; }
+| assignment            { $$ = $1; }
 
 assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
+| "++" "id"             { $$ = new PrefixIncrementAST($2); }
+| "--" "id"             { $$ = new PrefixIncrementAST($2); }
+| "id" "++"             { $$ = new PostfixIncrementAST($2); }
+| "id" "--"             { $$ = new PostfixIncrementAST($2); }
 
 block:
   "{" stmts "}"               { $$ = new BlockAST($2); }

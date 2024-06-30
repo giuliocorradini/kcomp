@@ -220,4 +220,28 @@ class GlobalVarAST: public RootAST {
   Constant *codegen(driver& drv) override;
 };
 
+class IfStatementAST: public RootAST {
+  private:
+  ExprAST *cond;   
+  RootAST *truestmt;
+  RootAST *falsestmt;
+
+  public:
+  IfStatementAST(ExprAST *cond, RootAST *truestmt);
+  IfStatementAST(ExprAST *cond, RootAST *truestmt, RootAST *falsestmt);
+  Value *codegen(driver& drv) override;
+};
+
+class ForStatementAST: public RootAST {
+  private:
+  RootAST *init;
+  ConditionalExprAST *cond;
+  AssignmentAST *update;
+  RootAST *stmt;
+
+  public:
+  ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt);
+  Value *codegen(driver& drv) override;
+};
+
 #endif // ! DRIVER_HH

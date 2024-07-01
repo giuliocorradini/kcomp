@@ -27,6 +27,7 @@
   class IfExprAST;
   class IfStatementAST;
   class ForStatementAST;
+  class UnaryOperatorBaseAST;
 }
 
 // The parsing context.
@@ -154,10 +155,10 @@ init:
 
 assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
-| "++" "id"             { $$ = new PrefixIncrementAST($2); }
-| "--" "id"             { $$ = new PrefixIncrementAST($2); }
-| "id" "++"             { $$ = new PostfixIncrementAST($2); }
-| "id" "--"             { $$ = new PostfixIncrementAST($2); }
+| "++" "id"             { $$ = new UnaryOperatorBaseAST($2, "+", -1); }
+| "--" "id"             { $$ = new UnaryOperatorBaseAST($2, "-", -1); }
+| "id" "++"             { $$ = new UnaryOperatorBaseAST($1, "+", 1); }
+| "id" "--"             { $$ = new UnaryOperatorBaseAST($1, "-", 1); }
 
 block:
   "{" stmts "}"               { $$ = new BlockAST($2); }

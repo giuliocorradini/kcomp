@@ -245,7 +245,7 @@ Function *PrototypeAST::codegen(driver& drv) {
 FunctionAST::FunctionAST(PrototypeAST* Proto, ExprAST* Body): Proto(Proto), Body(Body) {};
 
 Function *FunctionAST::codegen(driver& drv) {
-  cout << "Defining " << get<string>(Proto->getLexVal()) << endl;
+  //cout << "Defining " << get<string>(Proto->getLexVal()) << endl; TODO remove debug
 
   // Verifica che la funzione non sia già presente nel modulo, cioò che non
   // si tenti una "doppia definizione"
@@ -435,19 +435,28 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
 
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
 
+Value * AssignmentAST::getVariable(driver &drv) {
+  //  Search variable in local table
+  Value *ptr = drv.NamedValues[Id];
+  if (ptr)
+    return ptr;
+  
+  //  Resolve global table
+  ptr = module->getGlobalVariable(Id);
+
+  if (ptr)
+    return ptr;
+
+  return nullptr;
+}
+
 Value * AssignmentAST::codegen(driver &drv) {
   Value *rval = Val->codegen(drv);
 
-  //  Search variable in local table
-  Value *ptr = drv.NamedValues[Id];
-  if (not ptr) {
-    //  Resolve global table
-    ptr = module->getGlobalVariable(Id);
+  Value *ptr = getVariable(drv);
 
-    if (not ptr) {
-      return LogErrorV("Variable not declared.");
-    }
-  }
+  if (not ptr)
+    return LogErrorV("Variable not declared.");
 
   return builder->CreateStore(rval, ptr, false);
 }
@@ -585,4 +594,35 @@ Value * ForStatementAST::codegen(driver& drv) {
   PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);
 
   return P;
+}
+
+UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, std::string Op, int order):
+Op(Op), order(order), AssignmentAST(Id, new VariableExprAST(Id)) {}
+
+Value * UnaryOperatorBaseAST::codegen(driver &drv) {
+  // Get value for variable
+  Value *ptr = getVariable(drv);
+  if (not ptr)
+    return LogErrorV("Variable not declared.");
+
+  Value *preopValue = Val->codegen(drv);
+  Value *newValue;
+  
+  if (Op == "+") {
+    newValue = builder->CreateAdd(preopValue, ConstantInt::get(Type::getInt64Ty(*context), 1));
+  } else if (Op == "-") {
+    newValue = builder->CreateSub(preopValue, ConstantInt::get(Type::getInt64Ty(*context), 1));
+  } else {
+    return LogErrorV(Op + " is an invalid operation");
+  }
+
+  builder->CreateStore(ptr, newValue);
+
+  if (order < 0) {  //prefix
+    return newValue;
+  } else if (order > 0) { //postfix
+    return preopValue;
+  } else {
+    return LogErrorV("Invalid order = 0");
+  }
 }

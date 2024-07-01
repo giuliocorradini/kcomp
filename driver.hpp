@@ -192,11 +192,19 @@ class VarBindingAST: public RootAST {
 class AssignmentAST: public ExprAST {
   private:
   std::string Id;
+
+  protected:
   ExprAST *Val;
 
   public:
   AssignmentAST(std::string Id, ExprAST *Val);
   Value * codegen(driver &drv) override;
+
+  protected:
+  /**
+   * Returns the associated variable from the local table or the global table.
+   */
+  Value * getVariable(driver &drv);
 };
 
 class ConditionalExprAST: public ExprAST {
@@ -242,6 +250,26 @@ class ForStatementAST: public RootAST {
   public:
   ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt);
   Value *codegen(driver& drv) override;
+};
+
+/**
+ * This class represents a common base for prefix/postfix increment/decrement
+ * operators, that performs an assignment.
+ * 
+ * The actual specific operator is a subclass constructed using mixins.
+ */
+class UnaryOperatorBaseAST: public AssignmentAST {
+  private:
+  std::string Op;
+  int order;
+
+  public:
+  /**
+   * @param Op operator, can be "+" or "-"
+   * @param order operation order, can be 1 post or -1 pre
+   */
+  UnaryOperatorBaseAST(std::string Id, std::string Op, int order);
+  Value * codegen(driver &drv) final;
 };
 
 #endif // ! DRIVER_HH

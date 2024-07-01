@@ -2,6 +2,7 @@
 
 all: floor rand fibonacci sqrt eqn2 inssort inssort2 sqrt2
 
+# First level grammar
 floor: callfloor.o floor.o
 	clang++ -o floor callfloor.o floor.o
 
@@ -22,6 +23,7 @@ rand.o:	rand.k
 	../kcomp rand.k 2> rand.ll
 	./tobinary.sh rand.ll
 
+# Second level grammar
 fibonacci: fibonacciIt.o callfibo.o
 	clang++ -o fibonacci callfibo.o fibonacciIt.o
 
@@ -62,6 +64,7 @@ inssort.o:	inssort.k
 	../kcomp inssort.k 2> inssort.ll
 	./tobinary.sh inssort.ll
 	
+# Third level grammar
 inssort2: inssort2.o time_and_print.o rand.o
 	clang++ -o inssort2 inssort2.o time_and_print.o rand.o
 
@@ -76,6 +79,7 @@ sqrt2.o:	sqrt2.k
 	../kcomp sqrt2.k 2> sqrt2.ll
 	./tobinary.sh sqrt2.ll
 	
+# Forth level grammar
 sqrt3: callsqrt.o sqrt3.o
 	clang++ -o sqrt3 callsqrt.o sqrt3.o
 

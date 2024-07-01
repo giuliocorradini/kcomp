@@ -33,7 +33,9 @@ blank   [ \t]
 {blank}+   loc.step ();
 [\n]+      loc.lines (yyleng); loc.step ();
 
+"--"      return yy::parser::make_DECREMENT(loc);
 "-"      return yy::parser::make_MINUS     (loc);
+"++"      return yy::parser::make_INCREMENT(loc);
 "+"      return yy::parser::make_PLUS      (loc);
 "*"      return yy::parser::make_STAR      (loc);
 "/"      return yy::parser::make_SLASH     (loc);

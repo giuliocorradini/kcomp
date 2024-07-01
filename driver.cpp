@@ -609,9 +609,9 @@ Value * UnaryOperatorBaseAST::codegen(driver &drv) {
   Value *newValue;
   
   if (Op == "+") {
-    newValue = builder->CreateAdd(preopValue, ConstantInt::get(Type::getInt64Ty(*context), 1));
+    newValue = builder->CreateAdd(preopValue, ConstantFP::get(Type::getFloatTy(*context), 1));
   } else if (Op == "-") {
-    newValue = builder->CreateSub(preopValue, ConstantInt::get(Type::getInt64Ty(*context), 1));
+    newValue = builder->CreateSub(preopValue, ConstantFP::get(Type::getFloatTy(*context), 1));
   } else {
     return LogErrorV(Op + " is an invalid operation");
   }

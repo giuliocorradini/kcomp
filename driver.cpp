@@ -423,7 +423,7 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
   Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
 
-  cout << "Var binding of " << Name << endl;
+  //cout << "Var binding of " << Name << endl;
 
   if (not ExpVal or not alloc)
     return nullptr;

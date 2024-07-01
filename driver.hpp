@@ -272,4 +272,17 @@ class UnaryOperatorBaseAST: public AssignmentAST {
   //Value * codegen(driver &drv) final;
 };
 
+class ConditionalExprAST: public ExprAST {
+  private:
+  std::string kind;
+  RelationalExprAST *LHS;
+  ConditionalExprAST *RHS;
+
+  public:
+  ConditionalExprAST(std::string kind, RelationalExprAST *LHS, ConditionalExprAST *RHS);
+  ConditionalExprAST(RelationalExprAST *LHS);
+  ConditionalExprAST(std::string kind, ConditionalExprAST *RHS);
+  Value *codegen(driver& drv) override;
+};
+
 #endif // ! DRIVER_HH

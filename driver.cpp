@@ -639,3 +639,32 @@ Op(Op), order(order), AssignmentAST(Id, new BinaryExprAST(Op, new VariableExprAS
     return LogErrorV("Invalid order = 0");
   }
 }*/
+
+
+ConditionalExprAST::ConditionalExprAST(std::string kind, RelationalExprAST *LHS, ConditionalExprAST *RHS):
+kind(kind), LHS(LHS), RHS(RHS) {}
+
+ConditionalExprAST::ConditionalExprAST(RelationalExprAST *LHS): kind(""), LHS(LHS), RHS(nullptr) {}
+
+ConditionalExprAST::ConditionalExprAST(std::string kind, ConditionalExprAST *RHS): kind(kind), LHS(nullptr), RHS(RHS) {}
+
+Value * ConditionalExprAST::codegen(driver& drv) {
+  if (kind == "") {
+    return LHS->codegen(drv);
+  } else if (kind == "not") {
+    Value *cond = RHS->codegen(drv);
+    return builder->CreateNeg(cond);
+  }
+  
+  if (kind == "and") {
+    Value *LHSCond = LHS->codegen(drv);
+    Value *RHSCond = RHS->codegen(drv);
+    return builder->CreateAnd(LHSCond, RHSCond);
+  } else if (kind == "or") {
+    Value *LHSCond = LHS->codegen(drv);
+    Value *RHSCond = RHS->codegen(drv);
+    return builder->CreateOr(LHSCond, RHSCond);
+  } else {
+    return LogErrorV("Invalid conditonal operation kind: " + kind);
+  }
+}

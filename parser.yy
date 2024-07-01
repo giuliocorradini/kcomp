@@ -70,6 +70,9 @@
   FOR        "for"
   INCREMENT  "++"
   DECREMENT  "--"
+  AND        "and"
+  OR         "or"
+  NOT        "not"
 ;
 
 %token <std::string> IDENTIFIER "id"
@@ -192,14 +195,14 @@ initexp:
 expif:
   condexp "?" exp ":" exp { $$ = new IfExprAST($1, $3, $5); }
 
-condexp :
-  relexp
-| relexp "and" condexp
-| relexp "or" condexp
-| "not" condexp
-| "(" condexp ")"
+condexp:
+  relexp                { $$ = new ConditionalExprAST($1); }
+| relexp "and" condexp  { $$ = new ConditionalExprAST("and", $1, $3); }
+| relexp "or" condexp   { $$ = new ConditionalExprAST("or", $1, $3); }
+| "not" condexp         { $$ = new ConditionalExprAST("not", $2); }
+| "(" condexp ")"       { $$ = $2; }
 
-relexp :
+relexp:
   exp "<" exp           { $$ = new RelationalExprAST('<', $1, $3); }
 | exp "==" exp          { $$ = new RelationalExprAST('=', $1, $3); }
 

@@ -260,7 +260,7 @@ class ForStatementAST: public RootAST {
  */
 class UnaryOperatorBaseAST: public AssignmentAST {
   private:
-  std::string Op;
+  char Op;
   int order;
 
   public:
@@ -268,8 +268,8 @@ class UnaryOperatorBaseAST: public AssignmentAST {
    * @param Op operator, can be "+" or "-"
    * @param order operation order, can be 1 post or -1 pre
    */
-  UnaryOperatorBaseAST(std::string Id, std::string Op, int order);
-  Value * codegen(driver &drv) final;
+  UnaryOperatorBaseAST(std::string Id, char Op, int order);
+  //Value * codegen(driver &drv) final;
 };
 
 #endif // ! DRIVER_HH

@@ -114,7 +114,7 @@ Value *VariableExprAST::codegen(driver& drv) {
   if (G)
     return builder->CreateLoad(G->getValueType(), G, Name.c_str());
 
-  return LogErrorV("Undeclared variable");
+  return LogErrorV("Undeclared variable " + Name);
 }
 
 /******************** Binary Expression Tree **********************/
@@ -424,6 +424,7 @@ AllocaInst * VarBindingAST::codegen(driver &drv) {
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
 
   //cout << "Var binding of " << Name << endl;
+  drv.NamedValues[Name] = alloc;
 
   if (not ExpVal or not alloc)
     return nullptr;
@@ -572,34 +573,44 @@ ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, Assign
 init(init), cond(cond), update(update), stmt(stmt) {}
 
 Value * ForStatementAST::codegen(driver& drv) {
-  // Initialization
-  init->codegen(drv);
-
   Function *fun = builder->GetInsertBlock()->getParent();
-  BasicBlock *iteration = BasicBlock::Create(*context, "foriteration", fun);
-  BasicBlock *endblock = BasicBlock::Create(*context, "endfor");
+  BasicBlock *forInit = BasicBlock::Create(*context, "forinit", fun);
+  BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
+  BasicBlock *body = BasicBlock::Create(*context, "body", fun);
+  BasicBlock *exit = BasicBlock::Create(*context, "forexit", fun);
 
-  // Populate iteration block
-  //  with condition check
-  builder->SetInsertPoint(iteration);
+  //  Point to init from current BB
+  builder->CreateBr(forInit);
+
+  //  Init variable
+  builder->SetInsertPoint(forInit);
+  init->codegen(drv);
+  builder->CreateBr(condition);
+
+  //  Check condition
+  builder->SetInsertPoint(condition);
   Value *condval = cond->codegen(drv);
-  builder->CreateCondBr(condval, iteration, endblock);
+  builder->CreateCondBr(condval, body, exit);
+
+  builder->SetInsertPoint(body);
   stmt->codegen(drv);
   update->codegen(drv);
-  builder->CreateBr(iteration);
+  builder->CreateBr(condition);
 
-  fun->insert(fun->end(), endblock);
-  builder->SetInsertPoint(endblock);
+  builder->SetInsertPoint(exit);
 
-  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);
+  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
+  P->addIncoming(ConstantFP::getNullValue(Type::getDoubleTy(*context)), condition);
 
   return P;
 }
 
-UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, std::string Op, int order):
-Op(Op), order(order), AssignmentAST(Id, new VariableExprAST(Id)) {}
+UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, char Op, int order):
+Op(Op), order(order), AssignmentAST(Id, new BinaryExprAST(Op, new VariableExprAST(Id), new NumberExprAST(1))) {}
 
-Value * UnaryOperatorBaseAST::codegen(driver &drv) {
+/**
+ * TODO: fix
+ * Value * UnaryOperatorBaseAST::codegen(driver &drv) {
   // Get value for variable
   Value *ptr = getVariable(drv);
   if (not ptr)
@@ -608,15 +619,17 @@ Value * UnaryOperatorBaseAST::codegen(driver &drv) {
   Value *preopValue = Val->codegen(drv);
   Value *newValue;
   
-  if (Op == "+") {
-    newValue = builder->CreateAdd(preopValue, ConstantFP::get(Type::getFloatTy(*context), 1));
-  } else if (Op == "-") {
-    newValue = builder->CreateSub(preopValue, ConstantFP::get(Type::getFloatTy(*context), 1));
+  if (Op == '+') {
+    newValue = builder->CreateFAdd(preopValue, ConstantFP::get(*context, APFloat(1.0)));
+  } else if (Op == '-') {
+    newValue = builder->CreateFSub(preopValue, ConstantFP::get(*context, APFloat(1.0)));
   } else {
     return LogErrorV(Op + " is an invalid operation");
   }
 
-  builder->CreateStore(ptr, newValue);
+  return newValue;
+
+  return builder->CreateStore(newValue, ptr);
 
   if (order < 0) {  //prefix
     return newValue;
@@ -625,4 +638,4 @@ Value * UnaryOperatorBaseAST::codegen(driver &drv) {
   } else {
     return LogErrorV("Invalid order = 0");
   }
-}
+}*/

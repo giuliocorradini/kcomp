@@ -155,10 +155,10 @@ init:
 
 assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
-| "++" "id"             { $$ = new UnaryOperatorBaseAST($2, "+", -1); }
-| "--" "id"             { $$ = new UnaryOperatorBaseAST($2, "-", -1); }
-| "id" "++"             { $$ = new UnaryOperatorBaseAST($1, "+", 1); }
-| "id" "--"             { $$ = new UnaryOperatorBaseAST($1, "-", 1); }
+| "++" "id"             { $$ = new UnaryOperatorBaseAST($2, '+', -1); }
+| "--" "id"             { $$ = new UnaryOperatorBaseAST($2, '-', -1); }
+| "id" "++"             { $$ = new UnaryOperatorBaseAST($1, '+', 1); }
+| "id" "--"             { $$ = new UnaryOperatorBaseAST($1, '-', 1); }
 
 block:
   "{" stmts "}"               { $$ = new BlockAST($2); }

@@ -65,6 +65,7 @@
   DEF        "def"
   VAR        "var"
   IF         "if"
+  ELSE       "else"
   FOR        "for"
   INCREMENT  "++"
   DECREMENT  "--"

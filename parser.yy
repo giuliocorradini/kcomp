@@ -21,6 +21,7 @@
   class PrototypeAST;
   class BlockAST;
   class VarBindingAST;
+  class RelationalExprAST;
   class ConditionalExprAST;
   class GlobalVarAST;
   class AssignmentAST;
@@ -85,6 +86,7 @@
 %type <BlockAST *> block
 %type <IfExprAST *> expif
 %type <ConditionalExprAST *> condexp
+%type <RelationalExprAST *> relexp
 %type <AssignmentAST *> assignment
 %type <VarBindingAST *> binding
 %type <std::vector<VarBindingAST *> > vardefs
@@ -190,9 +192,16 @@ initexp:
 expif:
   condexp "?" exp ":" exp { $$ = new IfExprAST($1, $3, $5); }
 
-condexp:
-  exp "<" exp           { $$ = new ConditionalExprAST('<', $1, $3); }
-| exp "==" exp          { $$ = new ConditionalExprAST('=', $1, $3); }
+condexp :
+  relexp
+| relexp "and" condexp
+| relexp "or" condexp
+| "not" condexp
+| "(" condexp ")"
+
+relexp :
+  exp "<" exp           { $$ = new RelationalExprAST('<', $1, $3); }
+| exp "==" exp          { $$ = new RelationalExprAST('=', $1, $3); }
 
 idexp:
   "id"                  { $$ = new VariableExprAST($1); }

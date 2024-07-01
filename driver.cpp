@@ -478,10 +478,10 @@ Constant * GlobalVarAST::codegen(driver &drv) {
   return var;
 }
 
-ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
+RelationalExprAST::RelationalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
 kind(kind), leftoperand(leftoperand), rightoperand(rightoperand) {}
 
-Value * ConditionalExprAST::codegen(driver& drv) {
+Value * RelationalExprAST::codegen(driver& drv) {
   Value *lhsVal = leftoperand->codegen(drv);
   Value *rhsVal = rightoperand->codegen(drv);
 

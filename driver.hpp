@@ -207,14 +207,14 @@ class AssignmentAST: public ExprAST {
   Value * getVariable(driver &drv);
 };
 
-class ConditionalExprAST: public ExprAST {
+class RelationalExprAST: public ExprAST {
   private:
   char kind;   // < Can be `<` or `=`
   ExprAST *leftoperand;
   ExprAST *rightoperand;
 
   public:
-  ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
+  RelationalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
   Value *codegen(driver& drv) override;
 };
 

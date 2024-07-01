@@ -1,6 +1,9 @@
 #include "driver.hpp"
 #include "parser.hpp"
 
+#include <iostream>
+using namespace std;
+
 // Generazione di un'istanza per ciascuna della classi LLVMContext,
 // Module e IRBuilder. Nel caso di singolo modulo è sufficiente
 LLVMContext *context = new LLVMContext;
@@ -104,9 +107,14 @@ lexval VariableExprAST::getLexVal() const {
 // il nome del registro in cui verrà trasferito il valore dalla memoria
 Value *VariableExprAST::codegen(driver& drv) {
   AllocaInst *A = drv.NamedValues[Name];
-  if (!A)
-     return LogErrorV("Variabile non definita");
-  return builder->CreateLoad(A->getAllocatedType(), A, Name.c_str());
+  if (A)
+    return builder->CreateLoad(A->getAllocatedType(), A, Name.c_str());
+  
+  GlobalVariable *G = module->getGlobalVariable(Name);
+  if (G)
+    return builder->CreateLoad(G->getValueType(), G, Name.c_str());
+
+  return LogErrorV("Undeclared variable");
 }
 
 /******************** Binary Expression Tree **********************/
@@ -237,8 +245,10 @@ Function *PrototypeAST::codegen(driver& drv) {
 FunctionAST::FunctionAST(PrototypeAST* Proto, ExprAST* Body): Proto(Proto), Body(Body) {};
 
 Function *FunctionAST::codegen(driver& drv) {
+  cout << "Defining " << get<string>(Proto->getLexVal()) << endl;
+
   // Verifica che la funzione non sia già presente nel modulo, cioò che non
-  // si tenti una "doppia definizion"
+  // si tenti una "doppia definizione"
   Function *function = 
       module->getFunction(std::get<std::string>(Proto->getLexVal()));
   // Se la funzione non è già presente, si prova a definirla, innanzitutto
@@ -298,3 +308,281 @@ Function *FunctionAST::codegen(driver& drv) {
   return nullptr;
 };
 
+IfExprAST::IfExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp) :
+cond(cond), trueexp(trueexp), falseexp(falseexp) {}
+
+Value * IfExprAST::codegen(driver& drv)
+{
+  // Valutiamo la condizione
+  Value *condv = cond->codegen(drv); //deve restituire un booleano, quindi un i1
+  if (not condv)
+    return LogErrorV("Codegen for condexp returned nullptr");
+
+  // Dove mandiamo l'istruzione di branch condizionato? Generiamo prima i blocchi.
+  // Dobbiamo prima trovare il riferimento alla funzione in cui inserirlo.
+  Function *fun = builder->GetInsertBlock()->getParent();   // < la funzione corrente
+  BasicBlock *TrueBB = BasicBlock::Create(*context, "trueblock", fun);
+  BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
+  BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
+
+  builder->CreateCondBr(condv, TrueBB, FalseBB);
+
+  // Posso cominciare a generare la parte true
+  // Cambiamo blocco del builder.
+  builder->SetInsertPoint(TrueBB);
+
+  Value *TrueV = trueexp->codegen(drv);  // codegen chiama il builder e inserisce il codice
+  if (not TrueV)
+    return nullptr;
+  
+  TrueBB = builder->GetInsertBlock();
+  builder->CreateBr(MergeBB);
+
+  // Possiamo inserire il blocck false.
+  fun->insert(fun->end(), FalseBB);  // inserisci il blocco alla fine della funzione
+  builder->SetInsertPoint(FalseBB);
+
+  Value *FalseV = falseexp->codegen(drv);
+  if (not FalseV)
+    return nullptr;
+
+  // Come true, anche false potrebbe essersi ulteriormente suddiviso. Sarebbe inutile se i blocchi fossero
+  // monolitici, ma non lo sono.
+  FalseBB = builder->GetInsertBlock();
+  builder->CreateBr(MergeBB);
+
+  // Inseriamo il merge block
+  fun->insert(fun->end(), MergeBB);
+  builder->SetInsertPoint(MergeBB);
+
+  // Riunione dei flussi. PHINode è un particolare value.
+  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
+                                                                    // numero di flussi che riunisce PHI
+  P->addIncoming(TrueV, TrueBB);
+  P->addIncoming(FalseV, FalseBB);
+
+  return P;
+}
+
+/***** Block Expression Tree *****/
+
+BlockAST::BlockAST(std::vector<RootAST *> Statements): Statements(std::move(Statements)) {}
+
+BlockAST::BlockAST(std::vector<VarBindingAST *> Bindings, std::vector<RootAST *> Statements): Bindings(std::move(Bindings)), Statements(std::move(Statements)) {}
+
+Value * BlockAST::codegen(driver &drv) {
+  //  A block is made of both variable definitions (local to the block) and statements
+  //  Bindings can shadow variables, thus they must be replaced before generating code for
+  //  the statements.
+
+  std::map<std::string, AllocaInst *> shadowed;
+
+  for (auto bind: Bindings) {
+    std::string const &name = bind->getName();
+    AllocaInst *boundVal = bind->codegen(drv);
+    if (not boundVal) {
+      return LogErrorV("Invalid variable binding"); // invalid binding
+    }
+
+    auto alloc = drv.NamedValues[name];
+    if (alloc)
+      shadowed[name] = alloc;
+
+    drv.NamedValues[name] = boundVal;
+    //TODO: do we need to shadow a global variable? Local are always checked first...
+  }
+
+  Value *ret;
+  for (auto stptr = Statements.rbegin(); stptr != Statements.rend(); stptr++) {
+    auto &stmt = *stptr;
+    ret = stmt->codegen(drv);
+    if (not ret)
+      return LogErrorV("Error in generating calls for block");
+  }
+
+
+  // Restore shadowed variables
+  for (auto bind: Bindings) {
+    drv.NamedValues.erase(bind->getName());
+  }
+
+  drv.NamedValues.merge(shadowed);
+
+  return ret;
+}
+
+
+VarBindingAST::VarBindingAST(std::string Name, ExprAST *Val): Name(Name), Val(Val) {}
+
+std::string & VarBindingAST::getName() {
+  return Name;
+}
+
+AllocaInst * VarBindingAST::codegen(driver &drv) {
+  Function *fun = builder->GetInsertBlock()->getParent();
+  Value *ExpVal = Val->codegen(drv);
+  AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
+
+  cout << "Var binding of " << Name << endl;
+
+  if (not ExpVal or not alloc)
+    return nullptr;
+
+  builder->CreateStore(ExpVal, alloc);
+
+  return alloc;
+}
+
+AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
+
+Value * AssignmentAST::codegen(driver &drv) {
+  Value *rval = Val->codegen(drv);
+
+  //  Search variable in local table
+  Value *ptr = drv.NamedValues[Id];
+  if (not ptr) {
+    //  Resolve global table
+    ptr = module->getGlobalVariable(Id);
+
+    if (not ptr) {
+      return LogErrorV("Variable not declared.");
+    }
+  }
+
+  return builder->CreateStore(rval, ptr, false);
+}
+
+GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
+
+Constant * GlobalVarAST::codegen(driver &drv) {
+  //  Find out if the variable is already defined
+  if(module->getGlobalVariable(Name))
+    return (GlobalVariable *)LogErrorV("Global variable already defined");
+
+  auto contextDouble = Type::getDoubleTy(*context);
+  GlobalVariable *var = new GlobalVariable(*module, contextDouble, false, GlobalValue::CommonLinkage, Constant::getNullValue(contextDouble), Name);
+
+  var->print(errs()); // Output variable definition on stderr
+  cerr << endl;
+
+  return var;
+}
+
+ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
+kind(kind), leftoperand(leftoperand), rightoperand(rightoperand) {}
+
+Value * ConditionalExprAST::codegen(driver& drv) {
+  Value *lhsVal = leftoperand->codegen(drv);
+  Value *rhsVal = rightoperand->codegen(drv);
+
+  Value *ret;
+
+  if (kind == '=') {
+    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OEQ, lhsVal, rhsVal); // Ordered compare expects both sides to be valid numbers, not NaNs
+  } else if (kind == '<') {
+    ret = builder->CreateCmp(llvm::CmpInst::Predicate::FCMP_OLT, lhsVal, rhsVal);
+  } else {
+    return LogErrorV("Compare operand not supported");
+  }
+
+  return ret;
+}
+
+IfStatementAST::IfStatementAST(ExprAST *cond, RootAST *truestmt): cond(cond), truestmt(truestmt), falsestmt(nullptr) {}
+IfStatementAST::IfStatementAST(ExprAST *cond, RootAST *truestmt, RootAST *falsestmt): cond(cond), truestmt(truestmt), falsestmt(falsestmt) {}
+
+Value * IfStatementAST::codegen(driver& drv) {
+  // Valutiamo la condizione
+  Value *condv = cond->codegen(drv); //deve restituire un booleano, quindi un i1
+  if (not condv)
+    return LogErrorV("Codegen for condexp returned nullptr");
+
+  Function *fun = builder->GetInsertBlock()->getParent();   // < la funzione corrente
+  BasicBlock *TrueBB = BasicBlock::Create(*context, "trueblock", fun);
+  BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
+  BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
+
+  PHINode *P;
+
+  if (falsestmt) {
+    builder->CreateCondBr(condv, TrueBB, FalseBB);
+
+    builder->SetInsertPoint(TrueBB);
+    Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
+    if (not TrueV)
+      return nullptr;
+    
+    TrueBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // If an "else" statement is specified, create another branch
+    fun->insert(fun->end(), FalseBB);  // inserisci il blocco alla fine della funzione
+    builder->SetInsertPoint(FalseBB);
+
+    Value *FalseV = falsestmt->codegen(drv);
+    if (not FalseV)
+      return nullptr;
+
+    // Come true, anche false potrebbe essersi ulteriormente suddiviso. Sarebbe inutile se i blocchi fossero
+    // monolitici, ma non lo sono.
+    FalseBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // Inseriamo il merge block
+    fun->insert(fun->end(), MergeBB);
+    builder->SetInsertPoint(MergeBB);
+
+    // Riunione dei flussi. PHINode è un particolare value.
+    P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
+                                                                      // numero di flussi che riunisce PHI
+    P->addIncoming(TrueV, TrueBB);
+    P->addIncoming(FalseV, FalseBB);
+  } else {
+    builder->CreateCondBr(condv, TrueBB, nullptr);
+
+    builder->SetInsertPoint(TrueBB);
+    Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
+    if (not TrueV)
+      return nullptr;
+    
+    TrueBB = builder->GetInsertBlock();
+    builder->CreateBr(MergeBB);
+
+    // Inseriamo il merge block
+    fun->insert(fun->end(), MergeBB);
+    builder->SetInsertPoint(MergeBB);
+
+    P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
+    P->addIncoming(TrueV, TrueBB);
+  }
+
+  return P;
+}
+
+ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
+init(init), cond(cond), update(update), stmt(stmt) {}
+
+Value * ForStatementAST::codegen(driver& drv) {
+  // Initialization
+  init->codegen(drv);
+
+  Function *fun = builder->GetInsertBlock()->getParent();
+  BasicBlock *iteration = BasicBlock::Create(*context, "foriteration", fun);
+  BasicBlock *endblock = BasicBlock::Create(*context, "endfor");
+
+  // Populate iteration block
+  //  with condition check
+  builder->SetInsertPoint(iteration);
+  Value *condval = cond->codegen(drv);
+  builder->CreateCondBr(condval, iteration, endblock);
+  stmt->codegen(drv);
+  update->codegen(drv);
+  builder->CreateBr(iteration);
+
+  fun->insert(fun->end(), endblock);
+  builder->SetInsertPoint(endblock);
+
+  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);
+
+  return P;
+}

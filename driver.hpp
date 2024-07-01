@@ -36,10 +36,14 @@ class driver
 {
 public:
   driver();
-  std::map<std::string, AllocaInst *> NamedValues; // Tabella associativa in cui ogni 
-            // chiave x è una variabile e il cui corrispondente valore è un'istruzione 
-            // che alloca uno spazio di memoria della dimensione necessaria per 
-            // memorizzare un variabile del tipo di x (nel nostro caso solo double)
+  std::map<std::string, AllocaInst *> NamedValues; // < Symbol table
+            /**
+             * Tabella associativa in cui ogni 
+             * chiave x è una variabile e il cui corrispondente valore è un'istruzione 
+             * che alloca uno spazio di memoria della dimensione necessaria per 
+             * memorizzare un variabile del tipo di x (nel nostro caso solo double)
+             */
+
   RootAST* root;      // A fine parsing "punta" alla radice dell'AST
   int parse (const std::string& f);
   std::string file;
@@ -152,36 +156,92 @@ public:
   Function *codegen(driver& drv) override;
 };
 
-class AssignmentAST: public RootAST {
+class IfExprAST: public ExprAST {
+  private:
+  ExprAST *cond;   
+  ExprAST *trueexp;
+  ExprAST *falseexp;
 
+  public:
+  IfExprAST(ExprAST *cond, ExprAST *trueexp, ExprAST *falseexp);
+  Value *codegen(driver& drv) override;
 };
 
-class BindingAST: public RootAST {
+class BlockAST: public ExprAST {
+  private:
+  std::vector<VarBindingAST *> Bindings;
+  std::vector<RootAST *> Statements;
 
+  public:
+  BlockAST(std::vector<RootAST *>);
+  BlockAST(std::vector<VarBindingAST *>, std::vector<RootAST *>);
+  Value *codegen(driver &drv) override;
 };
 
-class BlockAST: public RootAST {
+class VarBindingAST: public RootAST {
+  private:
+  std::string Name;
+  ExprAST *Val;
 
+  public:
+  VarBindingAST(std::string Name, ExprAST *Val);
+  std::string &getName();
+  AllocaInst *codegen(driver& drv) override;
+};
+
+class AssignmentAST: public ExprAST {
+  private:
+  std::string Id;
+  ExprAST *Val;
+
+  public:
+  AssignmentAST(std::string Id, ExprAST *Val);
+  Value * codegen(driver &drv) override;
 };
 
 class ConditionalExprAST: public ExprAST {
+  private:
+  char kind;   // < Can be `<` or `=`
+  ExprAST *leftoperand;
+  ExprAST *rightoperand;
 
+  public:
+  ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
+  Value *codegen(driver& drv) override;
 };
 
 class GlobalVarAST: public RootAST {
+  private:
+  std::string Name;
 
+  public:
+  GlobalVarAST(std::string Name);
+  std::string &getName();
+  Constant *codegen(driver& drv) override;
 };
 
-class IfExprAST: public ExprAST {
+class IfStatementAST: public RootAST {
+  private:
+  ExprAST *cond;   
+  RootAST *truestmt;
+  RootAST *falsestmt;
 
+  public:
+  IfStatementAST(ExprAST *cond, RootAST *truestmt);
+  IfStatementAST(ExprAST *cond, RootAST *truestmt, RootAST *falsestmt);
+  Value *codegen(driver& drv) override;
 };
 
-class StatementAST: public RootAST {
+class ForStatementAST: public RootAST {
+  private:
+  RootAST *init;
+  ConditionalExprAST *cond;
+  AssignmentAST *update;
+  RootAST *stmt;
 
-};
-
-class AssignmentAST: public RootAST {
-
+  public:
+  ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt);
+  Value *codegen(driver& drv) override;
 };
 
 #endif // ! DRIVER_HH

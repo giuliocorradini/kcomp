@@ -1,6 +1,6 @@
 .PHONY: clean all
 
-all: floor rand fibonacci sqrt eqn2 inssort inssort2 sqrt2
+all: floor rand fibonacci sqrt eqn2 sqrt2 sqrt3 inssort inssort2
 
 # First level grammar
 floor: callfloor.o floor.o
@@ -54,24 +54,10 @@ eqn2.o:	eqn2.k
 	../kcomp eqn2.k 2> eqn2.ll
 	./tobinary.sh eqn2.ll
 	
-inssort: inssort.o time_and_print.o rand.o
-	clang++ -o inssort inssort.o time_and_print.o rand.o
-
 time_and_print.o: time_and_print.cpp
-	clang++ -c time_and_print.cpp
-
-inssort.o:	inssort.k
-	../kcomp inssort.k 2> inssort.ll
 	./tobinary.sh inssort.ll
 	
 # Third level grammar
-inssort2: inssort2.o time_and_print.o rand.o
-	clang++ -o inssort2 inssort2.o time_and_print.o rand.o
-
-inssort2.o:	inssort2.k
-	../kcomp inssort2.k 2> inssort2.ll
-	./tobinary.sh inssort2.ll	
-	
 sqrt2: callsqrt.o sqrt2.o
 	clang++ -o sqrt2 callsqrt.o sqrt2.o
 
@@ -79,13 +65,27 @@ sqrt2.o:	sqrt2.k
 	../kcomp sqrt2.k 2> sqrt2.ll
 	./tobinary.sh sqrt2.ll
 	
-# Forth level grammar
 sqrt3: callsqrt.o sqrt3.o
 	clang++ -o sqrt3 callsqrt.o sqrt3.o
 
 sqrt3.o:	sqrt3.k
 	../kcomp sqrt3.k 2> sqrt3.ll
 	./tobinary.sh sqrt3.ll
+
+# Forth level grammar
+inssort: inssort.o time_and_print.o rand.o
+	clang++ -o inssort inssort.o time_and_print.o rand.o
+	clang++ -c time_and_print.cpp
+
+inssort.o:	inssort.k
+	../kcomp inssort.k 2> inssort.ll
+
+inssort2: inssort2.o time_and_print.o rand.o
+	clang++ -o inssort2 inssort2.o time_and_print.o rand.o
+
+inssort2.o:	inssort2.k
+	../kcomp inssort2.k 2> inssort2.ll
+	./tobinary.sh inssort2.ll
 	
 clean:
 	rm -f floor rand fibonacci sqrt eqn2 inssort inssort2 sqrt2 sqrt3 *~ *.o *.s *.bc *.ll

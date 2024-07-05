@@ -36,6 +36,10 @@ Function * RootAST::currentFunction() {
   return builder->GetInsertBlock()->getParent();
 }
 
+static Constant *getConstantVoid() {
+  return Constant::getNullValue(Type::getVoidTy(*context));
+}
+
 // Implementazione del costruttore della classe driver
 driver::driver(): trace_parsing(false), trace_scanning(false) {};
 
@@ -296,7 +300,9 @@ Function *FunctionAST::codegen(driver& drv) {
     // Se la generazione termina senza errori, ciò che rimane da fare è
     // di generare l'istruzione return, che ("a tempo di esecuzione") prenderà
     // il valore lasciato nel registro RetVal 
-    builder->CreateRet(RetVal);
+
+    if (not RetVal->getType()->isVoidTy())
+      builder->CreateRet(RetVal);
 
     // Effettua la validazione del codice e un controllo di consistenza
     verifyFunction(*function);
@@ -520,8 +526,6 @@ Value * IfStatementAST::codegen(driver& drv) {
   BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
   BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
 
-  PHINode *P;
-
   outs() << "generating if\n";
 
   if (falsestmt) {
@@ -549,28 +553,9 @@ Value * IfStatementAST::codegen(driver& drv) {
     FalseBB = builder->GetInsertBlock();
     builder->CreateBr(MergeBB);
 
-    // Inseriamo il merge block
-    fun->insert(fun->end(), MergeBB);
-    builder->SetInsertPoint(MergeBB);
-    outs() << "prephi\n";
-
-    // Riunione dei flussi. PHINode è un particolare value.
-    P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
-                                                             // numero di flussi che riunisce PHI
-
-    TrueV->print(outs());
-    TrueV->getType()->print(outs());
-    outs()<<"\n";
-    FalseV->print(outs());
-    FalseV->getType()->print(outs());
-    outs()<<"\n";
-    P->addIncoming(TrueV, TrueBB);
-    outs() << "true added\n";
-    P->addIncoming(FalseV, FalseBB);
-    outs() << "postphi\n";
   } else {
     outs() << "one branch\n";
-    builder->CreateCondBr(condv, TrueBB, nullptr);
+    builder->CreateCondBr(condv, TrueBB, MergeBB);
 
     builder->SetInsertPoint(TrueBB);
     Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
@@ -580,17 +565,15 @@ Value * IfStatementAST::codegen(driver& drv) {
     TrueBB = builder->GetInsertBlock();
     builder->CreateBr(MergeBB);
 
-    // Inseriamo il merge block
-    fun->insert(fun->end(), MergeBB);
-    builder->SetInsertPoint(MergeBB);
-
-    P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
-    P->addIncoming(TrueV, TrueBB);
   }
+
+  // Inseriamo il merge block
+  fun->insert(fun->end(), MergeBB);
+  builder->SetInsertPoint(MergeBB);
 
   outs() << "fi\n";
 
-  return P;
+  return getConstantVoid();
 }
 
 ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
@@ -757,7 +740,7 @@ Value * ArrayExprAST::codegen(driver &drv) {
     if (ArrayType *ArrType = dyn_cast<ArrayType>(A->getAllocatedType()); ArrType and not ArrType->getElementType()->isDoubleTy())
       return LogErrorV(Name + " is not an array of doubles");
     
-    Value *ElementPtr = builder->CreateInBoundsGEP(Type::getDoubleTy(*context), A, {builder->getInt32(0), Index});
+    Value *ElementPtr = builder->CreateInBoundsGEP(A->getAllocatedType(), A, {builder->getInt32(0), Index});
     ElementPtr->print(outs());
     return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
   }
@@ -769,7 +752,7 @@ Value * ArrayExprAST::codegen(driver &drv) {
     if (ArrayType *ArrType = dyn_cast<ArrayType>(G->getValueType()); ArrType and not ArrType->getElementType()->isDoubleTy())
       return LogErrorV(Name + " is not an array of doubles");    
 
-    Value *ElementPtr = builder->CreateInBoundsGEP(Type::getDoubleTy(*context), G, {builder->getInt32(0), Index});
+    Value *ElementPtr = builder->CreateInBoundsGEP(G->getValueType(), G, {builder->getInt32(0), Index});
     outs() << "global "; ElementPtr->print(outs()); outs() << "\n";
     return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
   }

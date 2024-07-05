@@ -55,7 +55,7 @@ eqn2.o:	eqn2.k
 	./tobinary.sh eqn2.ll
 	
 time_and_print.o: time_and_print.cpp
-	./tobinary.sh inssort.ll
+	clang++ -c time_and_print.cpp
 	
 # Third level grammar
 sqrt2: callsqrt.o sqrt2.o
@@ -75,7 +75,7 @@ sqrt3.o:	sqrt3.k
 # Forth level grammar
 inssort: inssort.o time_and_print.o rand.o
 	clang++ -o inssort inssort.o time_and_print.o rand.o
-	clang++ -c time_and_print.cpp
+	./tobinary.sh inssort.ll
 
 inssort.o:	inssort.k
 	../kcomp inssort.k 2> inssort.ll

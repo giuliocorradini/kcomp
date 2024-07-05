@@ -50,6 +50,8 @@ blank   [ \t]
 "="      return yy::parser::make_ASSIGN    (loc);
 "{"      return yy::parser::make_LBRACE    (loc);
 "}"      return yy::parser::make_RBRACE    (loc);
+"["      return yy::parser::make_LSQBRACK  (loc);
+"]"      return yy::parser::make_RSQBRACK  (loc);
 "and"    return yy::parser::make_AND       (loc);
 "or"     return yy::parser::make_OR        (loc);
 "not"    return yy::parser::make_NOT       (loc);

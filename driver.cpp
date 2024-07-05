@@ -32,6 +32,10 @@ static AllocaInst *CreateEntryBlockAlloca(Function *fun, StringRef VarName) {
   return TmpB.CreateAlloca(Type::getDoubleTy(*context), nullptr, VarName);
 }
 
+Function * RootAST::currentFunction() {
+  return builder->GetInsertBlock()->getParent();
+}
+
 // Implementazione del costruttore della classe driver
 driver::driver(): trace_parsing(false), trace_scanning(false) {};
 
@@ -667,4 +671,92 @@ Value * ConditionalExprAST::codegen(driver& drv) {
   } else {
     return LogErrorV("Invalid conditonal operation kind: " + kind);
   }
+}
+
+
+
+ArrayBindingAST::ArrayBindingAST(std::string Name, int Size): ArrayBindingAST(Name, Size, {}) {}
+
+ArrayBindingAST::ArrayBindingAST(std::string Name, int Size, std::vector<ExprAST *> Init): Size(Size), Init(Init), VarBindingAST(Name, nullptr) {}
+
+AllocaInst * ArrayBindingAST::CreateEntryBlockAlloca() {
+  Function *fun = currentFunction();
+
+  IRBuilder<> TmpBlock(&fun->getEntryBlock(), fun->getEntryBlock().begin());
+
+  ArrayType *type = ArrayType::get(Type::getDoubleTy(*context), Size);
+  return TmpBlock.CreateAlloca(type, nullptr, Name);
+}
+
+AllocaInst * ArrayBindingAST::codegen(driver& drv) {
+  if (Init.size() != Size)
+    return (AllocaInst *)LogErrorV("Initialization array for " + Name + " is not the same size as binding array");
+
+  AllocaInst *alloc = CreateEntryBlockAlloca();  //< Base ptr for array
+  if (not alloc)
+    return (AllocaInst *)LogErrorV("Can't create stack array " + Name);
+
+  ArrayType *type = ArrayType::get(Type::getDoubleTy(*context), Size);
+  std:vector<Value *> initValues = {};
+
+  for (auto initParam: Init) {
+    initValues.push_back(initParam->codegen(drv));
+  }
+
+  Value *InitStore;
+  for (int i=0; i<initValues.size(); i++) {
+    Value *Index = llvm::ConstantInt::get(builder->getInt32Ty(), i);
+    Value *ElementPtr = builder->CreateInBoundsGEP(type, alloc, {builder->getInt32(0), Index});
+
+    InitStore = builder->CreateStore(initValues[i], ElementPtr);
+  }
+
+  drv.NamedValues[Name] = alloc;
+
+  return alloc;
+}
+
+
+ArrayExprAST::ArrayExprAST(std::string Name, ExprAST *Offset): Offset(Offset), VariableExprAST(Name) {}
+
+Value * ArrayExprAST::codegen(driver &drv) {
+  AllocaInst *A = drv.NamedValues[Name];
+
+  //  Compute the offset value
+  Value *offsetFloat = Offset->codegen(drv);
+
+  //  Cast to integer
+  Value *Index = builder->CreateFPToUI(offsetFloat, builder->getInt32Ty());
+
+  if (A) {
+    if (not A->isArrayAllocation())
+      return LogErrorV(Name + " is not an array type");
+
+    Value *ElementPtr = builder->CreateInBoundsGEP(A->getAllocatedType(), A, {builder->getInt32(0), Index});
+    return builder->CreateLoad(A->getAllocatedType(), ElementPtr, Name.c_str());
+  }
+
+  return LogErrorV("Undeclared variable " + Name);
+}
+
+ArrayAssignmentAST::ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST *Value): AssignmentAST(Id, Value), Offset(Offset) {}
+
+Value * ArrayAssignmentAST::getVariable(driver &drv) {
+  Value *ptr = AssignmentAST::getVariable(drv);
+
+  if (not ptr)
+    return LogErrorV("Undeclared variable " + Id);
+
+  AllocaInst *basePtr = dyn_cast<AllocaInst>(ptr); 
+  if (not basePtr or not basePtr->isArrayAllocation())
+    return LogErrorV(Id + " does not identify an array");
+
+  //  Compute the offset value
+  Value *offsetFloat = Offset->codegen(drv);
+
+  //  Cast to integer
+  Value *Index = builder->CreateFPToUI(offsetFloat, builder->getInt32Ty());
+  Value *ElementPtr = builder->CreateInBoundsGEP(basePtr->getAllocatedType(), basePtr, {builder->getInt32(0), Index});
+
+  return ElementPtr;
 }

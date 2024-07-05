@@ -29,6 +29,9 @@
   class IfStatementAST;
   class ForStatementAST;
   class UnaryOperatorBaseAST;
+  class ArrayBindingAST;
+  class ArrayAssignmentAST;
+  class ArrayExprAST;
 }
 
 // The parsing context.
@@ -73,6 +76,8 @@
   AND        "and"
   OR         "or"
   NOT        "not"
+  LSQBRACK   "["
+  RSQBRACK   "]"
 ;
 
 %token <std::string> IDENTIFIER "id"
@@ -165,6 +170,7 @@ assignment:
 | "--" "id"             { $$ = new UnaryOperatorBaseAST($2, '-', -1); }
 | "id" "++"             { $$ = new UnaryOperatorBaseAST($1, '+', 1); }
 | "id" "--"             { $$ = new UnaryOperatorBaseAST($1, '-', 1); }
+| "id" "[" exp "]" "=" exp  { $$ = new ArrayAssignmentAST($1, $3, $6); }
 
 block:
   "{" stmts "}"               { $$ = new BlockAST($2); }
@@ -175,7 +181,9 @@ vardefs:
 | vardefs ";" binding   { $1.push_back($3); $$ = $1; }
 
 binding:
-  "var" "id" initexp    { $$ = new VarBindingAST($2, $3); }
+  "var" "id" initexp                              { $$ = new VarBindingAST($2, $3); }
+| "var" "id" "[" "number" "]"                     { $$ = new ArrayBindingAST($2, $4); }
+| "var" "id" "[" "number" "]" "=" "{" explist "}" { $$ = new ArrayBindingAST($2, $4, $8); }
 
 exp:
   exp "+" exp           { $$ = new BinaryExprAST('+',$1,$3); }
@@ -209,6 +217,7 @@ relexp:
 idexp:
   "id"                  { $$ = new VariableExprAST($1); }
 | "id" "(" optexp ")"   { $$ = new CallExprAST($1,$3); };
+| "id" "[" exp "]"      { $$ = new ArrayExprAST($1, $3); }
 
 optexp:
   %empty                { std::vector<ExprAST*> args;

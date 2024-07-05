@@ -225,6 +225,9 @@ class GlobalVarAST: public RootAST {
   private:
   std::string Name;
 
+  protected:
+  virtual Type * getVariableType();
+
   public:
   GlobalVarAST(std::string Name);
   std::string &getName();
@@ -324,6 +327,17 @@ class ArrayAssignmentAST: public AssignmentAST {
   public:
   ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST *Value);
   virtual Value *getVariable(driver &drv) override;
+};
+
+class GlobalArrayAST: public GlobalVarAST {
+  private:
+  int Size;
+
+  protected:
+  Type * getVariableType() override;
+
+  public:
+  GlobalArrayAST(std::string Name, int Size);
 };
 
 #endif // ! DRIVER_HH

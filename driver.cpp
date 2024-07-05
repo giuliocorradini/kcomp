@@ -468,12 +468,16 @@ Value * AssignmentAST::codegen(driver &drv) {
 
 GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
 
+Type * GlobalVarAST::getVariableType() {
+  return Type::getDoubleTy(*context);
+}
+
 Constant * GlobalVarAST::codegen(driver &drv) {
   //  Find out if the variable is already defined
   if(module->getGlobalVariable(Name))
     return (GlobalVariable *)LogErrorV("Global variable already defined");
 
-  auto contextDouble = Type::getDoubleTy(*context);
+  auto contextDouble = getVariableType();
   GlobalVariable *var = new GlobalVariable(*module, contextDouble, false, GlobalValue::CommonLinkage, Constant::getNullValue(contextDouble), Name);
 
   var->print(errs()); // Output variable definition on stderr
@@ -518,7 +522,10 @@ Value * IfStatementAST::codegen(driver& drv) {
 
   PHINode *P;
 
+  outs() << "generating if\n";
+
   if (falsestmt) {
+    outs() << "two branches\n";
     builder->CreateCondBr(condv, TrueBB, FalseBB);
 
     builder->SetInsertPoint(TrueBB);
@@ -545,13 +552,24 @@ Value * IfStatementAST::codegen(driver& drv) {
     // Inseriamo il merge block
     fun->insert(fun->end(), MergeBB);
     builder->SetInsertPoint(MergeBB);
+    outs() << "prephi\n";
 
     // Riunione dei flussi. PHINode è un particolare value.
     P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
-                                                                      // numero di flussi che riunisce PHI
+                                                             // numero di flussi che riunisce PHI
+
+    TrueV->print(outs());
+    TrueV->getType()->print(outs());
+    outs()<<"\n";
+    FalseV->print(outs());
+    FalseV->getType()->print(outs());
+    outs()<<"\n";
     P->addIncoming(TrueV, TrueBB);
+    outs() << "true added\n";
     P->addIncoming(FalseV, FalseBB);
+    outs() << "postphi\n";
   } else {
+    outs() << "one branch\n";
     builder->CreateCondBr(condv, TrueBB, nullptr);
 
     builder->SetInsertPoint(TrueBB);
@@ -570,6 +588,8 @@ Value * IfStatementAST::codegen(driver& drv) {
     P->addIncoming(TrueV, TrueBB);
   }
 
+  outs() << "fi\n";
+
   return P;
 }
 
@@ -582,6 +602,8 @@ Value * ForStatementAST::codegen(driver& drv) {
   BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
   BasicBlock *body = BasicBlock::Create(*context, "body", fun);
   BasicBlock *exit = BasicBlock::Create(*context, "forexit", fun);
+
+  outs() << "generating for\n";
 
   //  Point to init from current BB
   builder->CreateBr(forInit);
@@ -732,11 +754,27 @@ Value * ArrayExprAST::codegen(driver &drv) {
     if (not A->isArrayAllocation())
       return LogErrorV(Name + " is not an array type");
 
-    Value *ElementPtr = builder->CreateInBoundsGEP(A->getAllocatedType(), A, {builder->getInt32(0), Index});
-    return builder->CreateLoad(A->getAllocatedType(), ElementPtr, Name.c_str());
+    if (ArrayType *ArrType = dyn_cast<ArrayType>(A->getAllocatedType()); ArrType and not ArrType->getElementType()->isDoubleTy())
+      return LogErrorV(Name + " is not an array of doubles");
+    
+    Value *ElementPtr = builder->CreateInBoundsGEP(Type::getDoubleTy(*context), A, {builder->getInt32(0), Index});
+    ElementPtr->print(outs());
+    return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
   }
 
-  return LogErrorV("Undeclared variable " + Name);
+  if (GlobalVariable *G = module->getGlobalVariable(Name); G) {
+    if (not G->getValueType()->isArrayTy())
+      return LogErrorV("Global variable " + Name + " is not an array");
+
+    if (ArrayType *ArrType = dyn_cast<ArrayType>(G->getValueType()); ArrType and not ArrType->getElementType()->isDoubleTy())
+      return LogErrorV(Name + " is not an array of doubles");    
+
+    Value *ElementPtr = builder->CreateInBoundsGEP(Type::getDoubleTy(*context), G, {builder->getInt32(0), Index});
+    outs() << "global "; ElementPtr->print(outs()); outs() << "\n";
+    return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
+  }
+
+  return LogErrorV("Undeclared array " + Name);
 }
 
 ArrayAssignmentAST::ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST *Value): AssignmentAST(Id, Value), Offset(Offset) {}
@@ -744,19 +782,40 @@ ArrayAssignmentAST::ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST 
 Value * ArrayAssignmentAST::getVariable(driver &drv) {
   Value *ptr = AssignmentAST::getVariable(drv);
 
-  if (not ptr)
-    return LogErrorV("Undeclared variable " + Id);
-
-  AllocaInst *basePtr = dyn_cast<AllocaInst>(ptr); 
-  if (not basePtr or not basePtr->isArrayAllocation())
-    return LogErrorV(Id + " does not identify an array");
-
   //  Compute the offset value
   Value *offsetFloat = Offset->codegen(drv);
 
   //  Cast to integer
   Value *Index = builder->CreateFPToUI(offsetFloat, builder->getInt32Ty());
-  Value *ElementPtr = builder->CreateInBoundsGEP(basePtr->getAllocatedType(), basePtr, {builder->getInt32(0), Index});
+
+  Value *ElementPtr;  //< Contains the element pointer of base+offset
+
+  outs() << "In function " << currentFunction()->getName() << "\n";
+  outs() << "Generating assignment to " + Id + "\n";
+
+  if (not ptr)
+    return LogErrorV("Undeclared identifier " + Id);
+
+  if (AllocaInst *basePtr = dyn_cast<AllocaInst>(ptr); basePtr) {
+    if (not basePtr->isArrayAllocation())
+      return LogErrorV(Id + " does not identify an array");
+
+    ElementPtr = builder->CreateInBoundsGEP(basePtr->getAllocatedType(), basePtr, {builder->getInt32(0), Index});
+  } else if (GlobalVariable *basePtr = dyn_cast<GlobalVariable>(ptr); basePtr) {
+    if (not basePtr->getValueType()->isArrayTy())
+      return LogErrorV("Global " + Id + "does not identify an array");
+
+    ElementPtr = builder->CreateInBoundsGEP(basePtr->getValueType(), basePtr, {builder->getInt32(0), Index});
+  }
+
+  outs() << "Generated\n";
 
   return ElementPtr;
+}
+
+
+GlobalArrayAST::GlobalArrayAST(std::string Name, int Size): GlobalVarAST(Name), Size(Size) {}
+
+Type * GlobalArrayAST::getVariableType() {
+  return ArrayType::get(Type::getDoubleTy(*context), Size);
 }

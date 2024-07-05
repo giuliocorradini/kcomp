@@ -1,5 +1,5 @@
 CXX := clang++
-CXXFLAGS := -std=c++17
+CXXFLAGS := -std=c++17 -g -O0
 LLVM_INCLUDES := $(shell llvm-config --cxxflags)
 
 all: kcomp

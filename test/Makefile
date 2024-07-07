@@ -75,10 +75,10 @@ sqrt3.o:	sqrt3.k
 # Forth level grammar
 inssort: inssort.o time_and_print.o rand.o
 	clang++ -o inssort inssort.o time_and_print.o rand.o
-	./tobinary.sh inssort.ll
 
 inssort.o:	inssort.k
 	../kcomp inssort.k 2> inssort.ll
+	./tobinary.sh inssort.ll
 
 inssort2: inssort2.o time_and_print.o rand.o
 	clang++ -o inssort2 inssort2.o time_and_print.o rand.o

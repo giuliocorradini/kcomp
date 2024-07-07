@@ -392,7 +392,9 @@ Value * BlockAST::codegen(driver &drv) {
       shadowed[name] = alloc;
 
     drv.NamedValues[name] = boundVal;
-    //TODO: do we need to shadow a global variable? Local are always checked first...
+    
+    //  Globals need not to be shadowed: since local vars are checked first, this blocks is
+    //  declaring local variables, with the same name as a global.
   }
 
   Value *ret;

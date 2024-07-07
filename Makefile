@@ -8,12 +8,12 @@ kcomp: driver.o parser.o scanner.o kcomp.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(shell llvm-config --cxxflags --ldflags --libs --libfiles --system-libs)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< $(LLVM_INCLUDES)
+	$(CXX) $(CXXFLAGS) $(LLVM_INCLUDES) -c $< -o $@
 
 driver.o: driver.cpp parser.hpp
-	$(CXX) $(CXXFLAGS) -c $< $(LLVM_INCLUDES)
+	$(CXX) $(CXXFLAGS) $(LLVM_INCLUDES) -c $< -o $@
 
-parser.cpp, parser.hpp: parser.yy 
+parser.cpp parser.hpp: parser.yy 
 	bison -o parser.cpp parser.yy
 
 scanner.cpp: scanner.ll

@@ -11,7 +11,7 @@ Module *module = new Module("Kaleidoscope", *context);
 IRBuilder<> *builder = new IRBuilder(*context);
 
 Value *LogErrorV(const std::string Str) {
-  std::cerr << Str << std::endl;
+  outs() << Str << "\n";
   return nullptr;
 }
 
@@ -526,10 +526,7 @@ Value * IfStatementAST::codegen(driver& drv) {
   BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
   BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
 
-  outs() << "generating if\n";
-
   if (falsestmt) {
-    outs() << "two branches\n";
     builder->CreateCondBr(condv, TrueBB, FalseBB);
 
     builder->SetInsertPoint(TrueBB);
@@ -554,7 +551,6 @@ Value * IfStatementAST::codegen(driver& drv) {
     builder->CreateBr(MergeBB);
 
   } else {
-    outs() << "one branch\n";
     builder->CreateCondBr(condv, TrueBB, MergeBB);
 
     builder->SetInsertPoint(TrueBB);
@@ -571,8 +567,6 @@ Value * IfStatementAST::codegen(driver& drv) {
   fun->insert(fun->end(), MergeBB);
   builder->SetInsertPoint(MergeBB);
 
-  outs() << "fi\n";
-
   return getConstantVoid();
 }
 
@@ -585,8 +579,6 @@ Value * ForStatementAST::codegen(driver& drv) {
   BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
   BasicBlock *body = BasicBlock::Create(*context, "body", fun);
   BasicBlock *exit = BasicBlock::Create(*context, "forexit", fun);
-
-  outs() << "generating for\n";
 
   //  Point to init from current BB
   builder->CreateBr(forInit);
@@ -741,7 +733,6 @@ Value * ArrayExprAST::codegen(driver &drv) {
       return LogErrorV(Name + " is not an array of doubles");
     
     Value *ElementPtr = builder->CreateInBoundsGEP(A->getAllocatedType(), A, {builder->getInt32(0), Index});
-    ElementPtr->print(outs());
     return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
   }
 
@@ -753,7 +744,6 @@ Value * ArrayExprAST::codegen(driver &drv) {
       return LogErrorV(Name + " is not an array of doubles");    
 
     Value *ElementPtr = builder->CreateInBoundsGEP(G->getValueType(), G, {builder->getInt32(0), Index});
-    outs() << "global "; ElementPtr->print(outs()); outs() << "\n";
     return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
   }
 
@@ -773,9 +763,6 @@ Value * ArrayAssignmentAST::getVariable(driver &drv) {
 
   Value *ElementPtr;  //< Contains the element pointer of base+offset
 
-  outs() << "In function " << currentFunction()->getName() << "\n";
-  outs() << "Generating assignment to " + Id + "\n";
-
   if (not ptr)
     return LogErrorV("Undeclared identifier " + Id);
 
@@ -790,8 +777,6 @@ Value * ArrayAssignmentAST::getVariable(driver &drv) {
 
     ElementPtr = builder->CreateInBoundsGEP(basePtr->getValueType(), basePtr, {builder->getInt32(0), Index});
   }
-
-  outs() << "Generated\n";
 
   return ElementPtr;
 }

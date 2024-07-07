@@ -36,10 +36,6 @@ Function * RootAST::currentFunction() {
   return builder->GetInsertBlock()->getParent();
 }
 
-static Constant *getConstantVoid() {
-  return Constant::getNullValue(Type::getVoidTy(*context));
-}
-
 // Implementazione del costruttore della classe driver
 driver::driver(): trace_parsing(false), trace_scanning(false) {};
 
@@ -253,8 +249,6 @@ Function *PrototypeAST::codegen(driver& drv) {
 FunctionAST::FunctionAST(PrototypeAST* Proto, ExprAST* Body): Proto(Proto), Body(Body) {};
 
 Function *FunctionAST::codegen(driver& drv) {
-  //cout << "Defining " << get<string>(Proto->getLexVal()) << endl; TODO remove debug
-
   // Verifica che la funzione non sia già presente nel modulo, cioò che non
   // si tenti una "doppia definizione"
   Function *function = 
@@ -301,8 +295,7 @@ Function *FunctionAST::codegen(driver& drv) {
     // di generare l'istruzione return, che ("a tempo di esecuzione") prenderà
     // il valore lasciato nel registro RetVal 
 
-    if (not RetVal->getType()->isVoidTy())
-      builder->CreateRet(RetVal);
+    builder->CreateRet(RetVal);
 
     // Effettua la validazione del codice e un controllo di consistenza
     verifyFunction(*function);
@@ -567,13 +560,13 @@ Value * IfStatementAST::codegen(driver& drv) {
   fun->insert(fun->end(), MergeBB);
   builder->SetInsertPoint(MergeBB);
 
-  return getConstantVoid();
+  return ConstantFP::get(Type::getDoubleTy(*context), 0.0);
 }
 
 ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
 init(init), cond(cond), update(update), stmt(stmt) {}
 
-Value * ForStatementAST::codegen(driver& drv) {
+Value * ForStatementAST::codegen(driver& drv) { //TODO: check
   Function *fun = builder->GetInsertBlock()->getParent();
   BasicBlock *forInit = BasicBlock::Create(*context, "forinit", fun);
   BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
@@ -608,38 +601,6 @@ Value * ForStatementAST::codegen(driver& drv) {
 
 UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, char Op, int order):
 Op(Op), order(order), AssignmentAST(Id, new BinaryExprAST(Op, new VariableExprAST(Id), new NumberExprAST(1))) {}
-
-/**
- * TODO: fix
- * Value * UnaryOperatorBaseAST::codegen(driver &drv) {
-  // Get value for variable
-  Value *ptr = getVariable(drv);
-  if (not ptr)
-    return LogErrorV("Variable not declared.");
-
-  Value *preopValue = Val->codegen(drv);
-  Value *newValue;
-  
-  if (Op == '+') {
-    newValue = builder->CreateFAdd(preopValue, ConstantFP::get(*context, APFloat(1.0)));
-  } else if (Op == '-') {
-    newValue = builder->CreateFSub(preopValue, ConstantFP::get(*context, APFloat(1.0)));
-  } else {
-    return LogErrorV(Op + " is an invalid operation");
-  }
-
-  return newValue;
-
-  return builder->CreateStore(newValue, ptr);
-
-  if (order < 0) {  //prefix
-    return newValue;
-  } else if (order > 0) { //postfix
-    return preopValue;
-  } else {
-    return LogErrorV("Invalid order = 0");
-  }
-}*/
 
 
 ConditionalExprAST::ConditionalExprAST(std::string kind, RelationalExprAST *LHS, ConditionalExprAST *RHS):

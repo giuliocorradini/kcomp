@@ -246,15 +246,27 @@ class IfStatementAST: public RootAST {
   Value *codegen(driver& drv) override;
 };
 
-class ForStatementAST: public RootAST {
+class ForInitAST: public RootAST {
   private:
   RootAST *init;
-  ConditionalExprAST *cond;
-  AssignmentAST *update;
-  RootAST *stmt;
+  bool binding;
 
   public:
-  ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt);
+  ForInitAST(RootAST *init, bool binding);
+  Value *codegen(driver& drv) override;
+  bool isBinding();
+  std::string getName();
+};
+
+class ForStatementAST: public RootAST {
+  private:
+  ForInitAST *init;
+  ConditionalExprAST *cond;
+  AssignmentAST *update;
+  RootAST *body;
+
+  public:
+  ForStatementAST(ForInitAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *body);
   Value *codegen(driver& drv) override;
 };
 
@@ -316,7 +328,7 @@ class ArrayExprAST: public VariableExprAST {
   ExprAST *Offset;
 
   public:
-  ArrayExprAST(std::string Name, ExprAST *Offset);//////ExprAST????
+  ArrayExprAST(std::string Name, ExprAST *Offset);
   Value *codegen(driver &drv) override;
 };
 

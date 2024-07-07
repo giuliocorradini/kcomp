@@ -27,6 +27,7 @@
   class AssignmentAST;
   class IfExprAST;
   class IfStatementAST;
+  class ForInitAST;
   class ForStatementAST;
   class UnaryOperatorBaseAST;
   class ArrayBindingAST;
@@ -85,7 +86,7 @@
 %token <double> NUMBER "number"
 %type <ExprAST*> exp idexp initexp
 %type <std::vector<ExprAST*>> optexp explist
-%type <RootAST*> program top init stmt
+%type <RootAST*> program top stmt
 %type <std::vector<RootAST *>> stmts
 %type <FunctionAST*> definition
 %type <PrototypeAST*> external
@@ -100,6 +101,7 @@
 %type <VarBindingAST *> binding
 %type <std::vector<VarBindingAST *> > vardefs
 %type <IfStatementAST *> ifstmt
+%type <ForInitAST *> init
 %type <ForStatementAST *> forstmt
 %%
 %start startsymb;
@@ -163,8 +165,8 @@ forstmt:
   "for" "(" init ";" condexp ";" assignment ")" stmt  { $$ = new ForStatementAST($3, $5, $7, $9); }
 
 init:
-  binding               { $$ = $1; }
-| assignment            { $$ = $1; }
+  binding               { $$ = new ForInitAST($1, true); }
+| assignment            { $$ = new ForInitAST($1, false); }
 
 assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }

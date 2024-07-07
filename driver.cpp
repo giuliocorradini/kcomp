@@ -575,14 +575,31 @@ Value * IfStatementAST::codegen(driver& drv) {
   return ConstantFP::get(Type::getDoubleTy(*context), 0.0);
 }
 
-ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
-init(init), cond(cond), update(update), stmt(stmt) {}
+ForInitAST::ForInitAST(RootAST *init, bool binding): init(init), binding(binding) {}
 
-Value * ForStatementAST::codegen(driver& drv) { //TODO: check
-  Function *fun = builder->GetInsertBlock()->getParent();
+bool ForInitAST::isBinding() {
+  return binding;
+}
+
+std::string ForInitAST::getName() {
+  if (not binding)
+    return "";
+
+  return static_cast<VarBindingAST *>(init)->getName();
+}
+
+Value * ForInitAST::codegen(driver& drv) {
+  return init->codegen(drv);
+}
+
+ForStatementAST::ForStatementAST(ForInitAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *body):
+init(init), cond(cond), update(update), body(body) {}
+
+Value * ForStatementAST::codegen(driver& drv) {
+  Function *fun = currentFunction();
   BasicBlock *forInit = BasicBlock::Create(*context, "forinit", fun);
   BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
-  BasicBlock *body = BasicBlock::Create(*context, "body", fun);
+  BasicBlock *bodyBlock = BasicBlock::Create(*context, "body", fun);
   BasicBlock *exit = BasicBlock::Create(*context, "forexit", fun);
 
   //  Point to init from current BB
@@ -590,25 +607,37 @@ Value * ForStatementAST::codegen(driver& drv) { //TODO: check
 
   //  Init variable
   builder->SetInsertPoint(forInit);
+  AllocaInst *shadowed = nullptr;
+  if (init->isBinding()) {
+    std::string Name = init->getName();
+    shadowed = drv.NamedValues[Name];
+    //if shadowed is null: binding is either shadowing a global or is not shadowing anything
+  }
   init->codegen(drv);
   builder->CreateBr(condition);
 
   //  Check condition
   builder->SetInsertPoint(condition);
   Value *condval = cond->codegen(drv);
-  builder->CreateCondBr(condval, body, exit);
+  if (not condval)
+    return LogErrorV("Condition value is a nullptr");
+  builder->CreateCondBr(condval, bodyBlock, exit);
 
-  builder->SetInsertPoint(body);
-  stmt->codegen(drv);
+  builder->SetInsertPoint(bodyBlock);
+  body->codegen(drv);
   update->codegen(drv);
   builder->CreateBr(condition);
 
   builder->SetInsertPoint(exit);
 
-  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
-  P->addIncoming(ConstantFP::getNullValue(Type::getDoubleTy(*context)), condition);
+  if (init->isBinding()) {
+    drv.NamedValues.erase(init->getName());
 
-  return P;
+    if (shadowed)
+      drv.NamedValues[init->getName()] = shadowed;
+  }
+
+  return ConstantFP::get(Type::getDoubleTy(*context), 0.0);
 }
 
 UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, char Op, int order):

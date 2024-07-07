@@ -425,17 +425,27 @@ std::string & VarBindingAST::getName() {
 
 AllocaInst * VarBindingAST::codegen(driver &drv) {
   Function *fun = builder->GetInsertBlock()->getParent();
-  Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
-
-  //cout << "Var binding of " << Name << endl;
-  drv.NamedValues[Name] = alloc;
-
-  if (not ExpVal or not alloc)
+  
+  if (not alloc) {
+    outs() << "Can't allocate binding\n";
     return nullptr;
+  }
 
-  builder->CreateStore(ExpVal, alloc);
+  if (Val != nullptr) { // initexp is not empty
+    Value *ExpVal = Val->codegen(drv);
 
+    if (not ExpVal) {
+      outs() << "Expression value is null\n";
+      return nullptr;
+    }
+
+    builder->CreateStore(ExpVal, alloc);
+  } else {
+    builder->CreateStore(ConstantFP::get(Type::getDoubleTy(*context), 0.0), alloc);
+  }
+
+  drv.NamedValues[Name] = alloc;
   return alloc;
 }
 

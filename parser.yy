@@ -21,12 +21,19 @@
   class PrototypeAST;
   class BlockAST;
   class VarBindingAST;
+  class RelationalExprAST;
   class ConditionalExprAST;
   class GlobalVarAST;
   class AssignmentAST;
   class IfExprAST;
   class IfStatementAST;
+  class ForInitAST;
   class ForStatementAST;
+  class UnaryOperatorBaseAST;
+  class ArrayBindingAST;
+  class ArrayAssignmentAST;
+  class ArrayExprAST;
+  class GlobalArrayAST;
 }
 
 // The parsing context.
@@ -64,16 +71,22 @@
   DEF        "def"
   VAR        "var"
   IF         "if"
+  ELSE       "else"
   FOR        "for"
   INCREMENT  "++"
   DECREMENT  "--"
+  AND        "and"
+  OR         "or"
+  NOT        "not"
+  LSQBRACK   "["
+  RSQBRACK   "]"
 ;
 
 %token <std::string> IDENTIFIER "id"
 %token <double> NUMBER "number"
 %type <ExprAST*> exp idexp initexp
 %type <std::vector<ExprAST*>> optexp explist
-%type <RootAST*> program top init stmt
+%type <RootAST*> program top stmt
 %type <std::vector<RootAST *>> stmts
 %type <FunctionAST*> definition
 %type <PrototypeAST*> external
@@ -83,10 +96,12 @@
 %type <BlockAST *> block
 %type <IfExprAST *> expif
 %type <ConditionalExprAST *> condexp
+%type <RelationalExprAST *> relexp
 %type <AssignmentAST *> assignment
 %type <VarBindingAST *> binding
 %type <std::vector<VarBindingAST *> > vardefs
 %type <IfStatementAST *> ifstmt
+%type <ForInitAST *> init
 %type <ForStatementAST *> forstmt
 %%
 %start startsymb;
@@ -114,7 +129,8 @@ proto:
   "id" "(" idseq ")"    { $$ = new PrototypeAST($1,$3);  };
 
 globalvar:
-  "global" "id"         { $$ = new GlobalVarAST($2); }
+  "global" "id"                     { $$ = new GlobalVarAST($2); }
+| "global" "id" "[" "number" "]"    { $$ = new GlobalArrayAST($2, $4); }
 
 idseq:
   %empty                { std::vector<std::string> args;
@@ -149,15 +165,16 @@ forstmt:
   "for" "(" init ";" condexp ";" assignment ")" stmt  { $$ = new ForStatementAST($3, $5, $7, $9); }
 
 init:
-  binding               { $$ = $1; }
-| assignment            { $$ = $1; }
+  binding               { $$ = new ForInitAST($1, true); }
+| assignment            { $$ = new ForInitAST($1, false); }
 
 assignment:
   "id" "=" exp          { $$ = new AssignmentAST($1, $3); }
-| "++" "id"             { $$ = new PrefixIncrementAST($2); }
-| "--" "id"             { $$ = new PrefixIncrementAST($2); }
-| "id" "++"             { $$ = new PostfixIncrementAST($2); }
-| "id" "--"             { $$ = new PostfixIncrementAST($2); }
+| "++" "id"             { $$ = new UnaryOperatorBaseAST($2, '+', -1); }
+| "--" "id"             { $$ = new UnaryOperatorBaseAST($2, '-', -1); }
+| "id" "++"             { $$ = new UnaryOperatorBaseAST($1, '+', 1); }
+| "id" "--"             { $$ = new UnaryOperatorBaseAST($1, '-', 1); }
+| "id" "[" exp "]" "=" exp  { $$ = new ArrayAssignmentAST($1, $3, $6); }
 
 block:
   "{" stmts "}"               { $$ = new BlockAST($2); }
@@ -168,11 +185,14 @@ vardefs:
 | vardefs ";" binding   { $1.push_back($3); $$ = $1; }
 
 binding:
-  "var" "id" initexp    { $$ = new VarBindingAST($2, $3); }
+  "var" "id" initexp                              { $$ = new VarBindingAST($2, $3); }
+| "var" "id" "[" "number" "]"                     { $$ = new ArrayBindingAST($2, $4); }
+| "var" "id" "[" "number" "]" "=" "{" explist "}" { $$ = new ArrayBindingAST($2, $4, $8); }
 
 exp:
   exp "+" exp           { $$ = new BinaryExprAST('+',$1,$3); }
 | exp "-" exp           { $$ = new BinaryExprAST('-',$1,$3); }
+| "-" exp               { $$ = new BinaryExprAST('-', new NumberExprAST(0),$2); }
 | exp "*" exp           { $$ = new BinaryExprAST('*',$1,$3); }
 | exp "/" exp           { $$ = new BinaryExprAST('/',$1,$3); }
 | idexp                 { $$ = $1; }
@@ -188,12 +208,20 @@ expif:
   condexp "?" exp ":" exp { $$ = new IfExprAST($1, $3, $5); }
 
 condexp:
-  exp "<" exp           { $$ = new ConditionalExprAST('<', $1, $3); }
-| exp "==" exp          { $$ = new ConditionalExprAST('=', $1, $3); }
+  relexp                { $$ = new ConditionalExprAST($1); }
+| relexp "and" condexp  { $$ = new ConditionalExprAST("and", $1, $3); }
+| relexp "or" condexp   { $$ = new ConditionalExprAST("or", $1, $3); }
+| "not" condexp         { $$ = new ConditionalExprAST("not", $2); }
+| "(" condexp ")"       { $$ = $2; }
+
+relexp:
+  exp "<" exp           { $$ = new RelationalExprAST('<', $1, $3); }
+| exp "==" exp          { $$ = new RelationalExprAST('=', $1, $3); }
 
 idexp:
   "id"                  { $$ = new VariableExprAST($1); }
 | "id" "(" optexp ")"   { $$ = new CallExprAST($1,$3); };
+| "id" "[" exp "]"      { $$ = new ArrayExprAST($1, $3); }
 
 optexp:
   %empty                { std::vector<ExprAST*> args;

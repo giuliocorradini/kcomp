@@ -61,6 +61,9 @@ const lexval NONE = 0.0;
 // Classe base dell'intera gerarchia di classi che rappresentano
 // gli elementi del programma
 class RootAST {
+protected:
+  static Function *currentFunction();
+
 public:
   virtual ~RootAST() {};
   virtual lexval getLexVal() const {return NONE;};
@@ -94,7 +97,7 @@ public:
 
 /// VariableExprAST - Classe per la rappresentazione di riferimenti a variabili
 class VariableExprAST : public ExprAST {
-private:
+protected:
   std::string Name;
   
 public:
@@ -180,8 +183,10 @@ class BlockAST: public ExprAST {
 
 class VarBindingAST: public RootAST {
   private:
-  std::string Name;
   ExprAST *Val;
+
+  protected:  //Inherited by subclasses
+  std::string Name;
 
   public:
   VarBindingAST(std::string Name, ExprAST *Val);
@@ -190,29 +195,38 @@ class VarBindingAST: public RootAST {
 };
 
 class AssignmentAST: public ExprAST {
-  private:
+  protected:
   std::string Id;
   ExprAST *Val;
 
   public:
   AssignmentAST(std::string Id, ExprAST *Val);
   Value * codegen(driver &drv) override;
+
+  protected:
+  /**
+   * Returns the associated variable from the local table or the global table.
+   */
+  virtual Value * getVariable(driver &drv);
 };
 
-class ConditionalExprAST: public ExprAST {
+class RelationalExprAST: public ExprAST {
   private:
   char kind;   // < Can be `<` or `=`
   ExprAST *leftoperand;
   ExprAST *rightoperand;
 
   public:
-  ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
+  RelationalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand);
   Value *codegen(driver& drv) override;
 };
 
 class GlobalVarAST: public RootAST {
   private:
   std::string Name;
+
+  protected:
+  virtual Type * getVariableType();
 
   public:
   GlobalVarAST(std::string Name);
@@ -232,16 +246,110 @@ class IfStatementAST: public RootAST {
   Value *codegen(driver& drv) override;
 };
 
-class ForStatementAST: public RootAST {
+class ForInitAST: public RootAST {
   private:
   RootAST *init;
-  ConditionalExprAST *cond;
-  AssignmentAST *update;
-  RootAST *stmt;
+  bool binding;
 
   public:
-  ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt);
+  ForInitAST(RootAST *init, bool binding);
   Value *codegen(driver& drv) override;
+  bool isBinding();
+  std::string getName();
+};
+
+class ForStatementAST: public RootAST {
+  private:
+  ForInitAST *init;
+  ConditionalExprAST *cond;
+  AssignmentAST *update;
+  RootAST *body;
+
+  public:
+  ForStatementAST(ForInitAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *body);
+  Value *codegen(driver& drv) override;
+};
+
+/**
+ * This class represents a common base for prefix/postfix increment/decrement
+ * operators, that performs an assignment.
+ * 
+ * The actual specific operator is a subclass constructed using mixins.
+ */
+class UnaryOperatorBaseAST: public AssignmentAST {
+  private:
+  char Op;
+  int order;
+
+  public:
+  /**
+   * @param Op operator, can be "+" or "-"
+   * @param order operation order, can be 1 post or -1 pre
+   */
+  UnaryOperatorBaseAST(std::string Id, char Op, int order);
+  //Value * codegen(driver &drv) final;
+};
+
+class ConditionalExprAST: public ExprAST {
+  private:
+  std::string kind;
+  RelationalExprAST *LHS;
+  ConditionalExprAST *RHS;
+
+  public:
+  ConditionalExprAST(std::string kind, RelationalExprAST *LHS, ConditionalExprAST *RHS);
+  ConditionalExprAST(RelationalExprAST *LHS);
+  ConditionalExprAST(std::string kind, ConditionalExprAST *RHS);
+  Value *codegen(driver& drv) override;
+};
+
+/**
+ * Declaration
+ */
+class ArrayBindingAST: public VarBindingAST {
+  private:
+  int Size;
+  std::vector<ExprAST *> Init;
+
+  public:
+  ArrayBindingAST(std::string Name, int Size);
+  ArrayBindingAST(std::string Name, int Size, std::vector<ExprAST *> Init);
+  AllocaInst *codegen(driver& drv) override;
+
+  private:
+  AllocaInst * CreateEntryBlockAlloca();
+};
+
+/**
+ * Expression
+ */
+class ArrayExprAST: public VariableExprAST {
+  private:
+  ExprAST *Offset;
+
+  public:
+  ArrayExprAST(std::string Name, ExprAST *Offset);
+  Value *codegen(driver &drv) override;
+};
+
+class ArrayAssignmentAST: public AssignmentAST {
+  private:
+  ExprAST *Offset;
+
+  public:
+  ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST *Value);
+  virtual Value *getVariable(driver &drv) override;
+};
+
+class GlobalArrayAST: public GlobalVarAST {
+  private:
+  int Size;
+
+  protected:
+  Type * getVariableType() override;
+
+  public:
+  GlobalArrayAST(std::string Name, int Size);
 };
 
 #endif // ! DRIVER_HH

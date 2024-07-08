@@ -11,7 +11,7 @@ Module *module = new Module("Kaleidoscope", *context);
 IRBuilder<> *builder = new IRBuilder(*context);
 
 Value *LogErrorV(const std::string Str) {
-  std::cerr << Str << std::endl;
+  outs() << Str << "\n";
   return nullptr;
 }
 
@@ -30,6 +30,10 @@ Value *LogErrorV(const std::string Str) {
 static AllocaInst *CreateEntryBlockAlloca(Function *fun, StringRef VarName) {
   IRBuilder<> TmpB(&fun->getEntryBlock(), fun->getEntryBlock().begin());
   return TmpB.CreateAlloca(Type::getDoubleTy(*context), nullptr, VarName);
+}
+
+Function * RootAST::currentFunction() {
+  return builder->GetInsertBlock()->getParent();
 }
 
 // Implementazione del costruttore della classe driver
@@ -114,7 +118,7 @@ Value *VariableExprAST::codegen(driver& drv) {
   if (G)
     return builder->CreateLoad(G->getValueType(), G, Name.c_str());
 
-  return LogErrorV("Undeclared variable");
+  return LogErrorV("Undeclared variable " + Name);
 }
 
 /******************** Binary Expression Tree **********************/
@@ -245,8 +249,6 @@ Function *PrototypeAST::codegen(driver& drv) {
 FunctionAST::FunctionAST(PrototypeAST* Proto, ExprAST* Body): Proto(Proto), Body(Body) {};
 
 Function *FunctionAST::codegen(driver& drv) {
-  cout << "Defining " << get<string>(Proto->getLexVal()) << endl;
-
   // Verifica che la funzione non sia già presente nel modulo, cioò che non
   // si tenti una "doppia definizione"
   Function *function = 
@@ -292,6 +294,7 @@ Function *FunctionAST::codegen(driver& drv) {
     // Se la generazione termina senza errori, ciò che rimane da fare è
     // di generare l'istruzione return, che ("a tempo di esecuzione") prenderà
     // il valore lasciato nel registro RetVal 
+
     builder->CreateRet(RetVal);
 
     // Effettua la validazione del codice e un controllo di consistenza
@@ -389,7 +392,9 @@ Value * BlockAST::codegen(driver &drv) {
       shadowed[name] = alloc;
 
     drv.NamedValues[name] = boundVal;
-    //TODO: do we need to shadow a global variable? Local are always checked first...
+    
+    //  Globals need not to be shadowed: since local vars are checked first, this blocks is
+    //  declaring local variables, with the same name as a global.
   }
 
   Value *ret;
@@ -420,46 +425,70 @@ std::string & VarBindingAST::getName() {
 
 AllocaInst * VarBindingAST::codegen(driver &drv) {
   Function *fun = builder->GetInsertBlock()->getParent();
-  Value *ExpVal = Val->codegen(drv);
   AllocaInst *alloc = CreateEntryBlockAlloca(fun, Name);
-
-  cout << "Var binding of " << Name << endl;
-
-  if (not ExpVal or not alloc)
+  
+  if (not alloc) {
+    outs() << "Can't allocate binding\n";
     return nullptr;
+  }
 
-  builder->CreateStore(ExpVal, alloc);
+  if (Val != nullptr) { // initexp is not empty
+    Value *ExpVal = Val->codegen(drv);
 
+    if (not ExpVal) {
+      outs() << "Expression value is null\n";
+      return nullptr;
+    }
+
+    builder->CreateStore(ExpVal, alloc);
+  } else {
+    builder->CreateStore(ConstantFP::get(Type::getDoubleTy(*context), 0.0), alloc);
+  }
+
+  drv.NamedValues[Name] = alloc;
   return alloc;
 }
 
 AssignmentAST::AssignmentAST(std::string Id, ExprAST *Val): Id(Id), Val(Val) {}
 
+Value * AssignmentAST::getVariable(driver &drv) {
+  //  Search variable in local table
+  Value *ptr = drv.NamedValues[Id];
+  if (ptr)
+    return ptr;
+  
+  //  Resolve global table
+  ptr = module->getGlobalVariable(Id);
+
+  if (ptr)
+    return ptr;
+
+  return nullptr;
+}
+
 Value * AssignmentAST::codegen(driver &drv) {
   Value *rval = Val->codegen(drv);
 
-  //  Search variable in local table
-  Value *ptr = drv.NamedValues[Id];
-  if (not ptr) {
-    //  Resolve global table
-    ptr = module->getGlobalVariable(Id);
+  Value *ptr = getVariable(drv);
 
-    if (not ptr) {
-      return LogErrorV("Variable not declared.");
-    }
-  }
+  if (not ptr)
+    return LogErrorV("Variable not declared.");
 
   return builder->CreateStore(rval, ptr, false);
 }
 
 GlobalVarAST::GlobalVarAST(std::string Name): Name(Name) {}
 
+Type * GlobalVarAST::getVariableType() {
+  return Type::getDoubleTy(*context);
+}
+
 Constant * GlobalVarAST::codegen(driver &drv) {
   //  Find out if the variable is already defined
   if(module->getGlobalVariable(Name))
     return (GlobalVariable *)LogErrorV("Global variable already defined");
 
-  auto contextDouble = Type::getDoubleTy(*context);
+  auto contextDouble = getVariableType();
   GlobalVariable *var = new GlobalVariable(*module, contextDouble, false, GlobalValue::CommonLinkage, Constant::getNullValue(contextDouble), Name);
 
   var->print(errs()); // Output variable definition on stderr
@@ -468,10 +497,10 @@ Constant * GlobalVarAST::codegen(driver &drv) {
   return var;
 }
 
-ConditionalExprAST::ConditionalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
+RelationalExprAST::RelationalExprAST(char kind, ExprAST *leftoperand, ExprAST *rightoperand):
 kind(kind), leftoperand(leftoperand), rightoperand(rightoperand) {}
 
-Value * ConditionalExprAST::codegen(driver& drv) {
+Value * RelationalExprAST::codegen(driver& drv) {
   Value *lhsVal = leftoperand->codegen(drv);
   Value *rhsVal = rightoperand->codegen(drv);
 
@@ -502,8 +531,6 @@ Value * IfStatementAST::codegen(driver& drv) {
   BasicBlock *FalseBB = BasicBlock::Create(*context, "falseblock");
   BasicBlock *MergeBB = BasicBlock::Create(*context, "mergeblock");
 
-  PHINode *P;
-
   if (falsestmt) {
     builder->CreateCondBr(condv, TrueBB, FalseBB);
 
@@ -528,17 +555,8 @@ Value * IfStatementAST::codegen(driver& drv) {
     FalseBB = builder->GetInsertBlock();
     builder->CreateBr(MergeBB);
 
-    // Inseriamo il merge block
-    fun->insert(fun->end(), MergeBB);
-    builder->SetInsertPoint(MergeBB);
-
-    // Riunione dei flussi. PHINode è un particolare value.
-    P = builder->CreatePHI(Type::getDoubleTy(*context), 2);  // il 2 sta per numero di coppie uguale al
-                                                                      // numero di flussi che riunisce PHI
-    P->addIncoming(TrueV, TrueBB);
-    P->addIncoming(FalseV, FalseBB);
   } else {
-    builder->CreateCondBr(condv, TrueBB, nullptr);
+    builder->CreateCondBr(condv, TrueBB, MergeBB);
 
     builder->SetInsertPoint(TrueBB);
     Value *TrueV = truestmt->codegen(drv);  // codegen chiama il builder e inserisce il codice
@@ -548,41 +566,226 @@ Value * IfStatementAST::codegen(driver& drv) {
     TrueBB = builder->GetInsertBlock();
     builder->CreateBr(MergeBB);
 
-    // Inseriamo il merge block
-    fun->insert(fun->end(), MergeBB);
-    builder->SetInsertPoint(MergeBB);
-
-    P = builder->CreatePHI(Type::getDoubleTy(*context), 1);
-    P->addIncoming(TrueV, TrueBB);
   }
 
-  return P;
+  // Inseriamo il merge block
+  fun->insert(fun->end(), MergeBB);
+  builder->SetInsertPoint(MergeBB);
+
+  return ConstantFP::get(Type::getDoubleTy(*context), 0.0);
 }
 
-ForStatementAST::ForStatementAST(RootAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *stmt):
-init(init), cond(cond), update(update), stmt(stmt) {}
+ForInitAST::ForInitAST(RootAST *init, bool binding): init(init), binding(binding) {}
+
+bool ForInitAST::isBinding() {
+  return binding;
+}
+
+std::string ForInitAST::getName() {
+  if (not binding)
+    return "";
+
+  return static_cast<VarBindingAST *>(init)->getName();
+}
+
+Value * ForInitAST::codegen(driver& drv) {
+  return init->codegen(drv);
+}
+
+ForStatementAST::ForStatementAST(ForInitAST *init, ConditionalExprAST *cond, AssignmentAST *update, RootAST *body):
+init(init), cond(cond), update(update), body(body) {}
 
 Value * ForStatementAST::codegen(driver& drv) {
-  // Initialization
+  Function *fun = currentFunction();
+  BasicBlock *forInit = BasicBlock::Create(*context, "forinit", fun);
+  BasicBlock *condition = BasicBlock::Create(*context, "condition", fun);
+  BasicBlock *bodyBlock = BasicBlock::Create(*context, "body", fun);
+  BasicBlock *exit = BasicBlock::Create(*context, "forexit", fun);
+
+  //  Point to init from current BB
+  builder->CreateBr(forInit);
+
+  //  Init variable
+  builder->SetInsertPoint(forInit);
+  AllocaInst *shadowed = nullptr;
+  if (init->isBinding()) {
+    std::string Name = init->getName();
+    shadowed = drv.NamedValues[Name];
+    //if shadowed is null: binding is either shadowing a global or is not shadowing anything
+  }
   init->codegen(drv);
+  builder->CreateBr(condition);
 
-  Function *fun = builder->GetInsertBlock()->getParent();
-  BasicBlock *iteration = BasicBlock::Create(*context, "foriteration", fun);
-  BasicBlock *endblock = BasicBlock::Create(*context, "endfor");
-
-  // Populate iteration block
-  //  with condition check
-  builder->SetInsertPoint(iteration);
+  //  Check condition
+  builder->SetInsertPoint(condition);
   Value *condval = cond->codegen(drv);
-  builder->CreateCondBr(condval, iteration, endblock);
-  stmt->codegen(drv);
+  if (not condval)
+    return LogErrorV("Condition value is a nullptr");
+  builder->CreateCondBr(condval, bodyBlock, exit);
+
+  builder->SetInsertPoint(bodyBlock);
+  body->codegen(drv);
   update->codegen(drv);
-  builder->CreateBr(iteration);
+  builder->CreateBr(condition);
 
-  fun->insert(fun->end(), endblock);
-  builder->SetInsertPoint(endblock);
+  builder->SetInsertPoint(exit);
 
-  PHINode *P = builder->CreatePHI(Type::getDoubleTy(*context), 2);
+  if (init->isBinding()) {
+    drv.NamedValues.erase(init->getName());
 
-  return P;
+    if (shadowed)
+      drv.NamedValues[init->getName()] = shadowed;
+  }
+
+  return ConstantFP::get(Type::getDoubleTy(*context), 0.0);
+}
+
+UnaryOperatorBaseAST::UnaryOperatorBaseAST(std::string Id, char Op, int order):
+Op(Op), order(order), AssignmentAST(Id, new BinaryExprAST(Op, new VariableExprAST(Id), new NumberExprAST(1))) {}
+
+
+ConditionalExprAST::ConditionalExprAST(std::string kind, RelationalExprAST *LHS, ConditionalExprAST *RHS):
+kind(kind), LHS(LHS), RHS(RHS) {}
+
+ConditionalExprAST::ConditionalExprAST(RelationalExprAST *LHS): kind(""), LHS(LHS), RHS(nullptr) {}
+
+ConditionalExprAST::ConditionalExprAST(std::string kind, ConditionalExprAST *RHS): kind(kind), LHS(nullptr), RHS(RHS) {}
+
+Value * ConditionalExprAST::codegen(driver& drv) {
+  if (kind == "") {
+    return LHS->codegen(drv);
+  } else if (kind == "not") {
+    Value *cond = RHS->codegen(drv);
+    return builder->CreateNeg(cond);
+  }
+  
+  if (kind == "and") {
+    Value *LHSCond = LHS->codegen(drv);
+    Value *RHSCond = RHS->codegen(drv);
+    return builder->CreateAnd(LHSCond, RHSCond);
+  } else if (kind == "or") {
+    Value *LHSCond = LHS->codegen(drv);
+    Value *RHSCond = RHS->codegen(drv);
+    return builder->CreateOr(LHSCond, RHSCond);
+  } else {
+    return LogErrorV("Invalid conditonal operation kind: " + kind);
+  }
+}
+
+
+
+ArrayBindingAST::ArrayBindingAST(std::string Name, int Size): ArrayBindingAST(Name, Size, {}) {}
+
+ArrayBindingAST::ArrayBindingAST(std::string Name, int Size, std::vector<ExprAST *> Init): Size(Size), Init(Init), VarBindingAST(Name, nullptr) {}
+
+AllocaInst * ArrayBindingAST::CreateEntryBlockAlloca() {
+  Function *fun = currentFunction();
+
+  IRBuilder<> TmpBlock(&fun->getEntryBlock(), fun->getEntryBlock().begin());
+
+  ArrayType *type = ArrayType::get(Type::getDoubleTy(*context), Size);
+  return TmpBlock.CreateAlloca(type, nullptr, Name);
+}
+
+AllocaInst * ArrayBindingAST::codegen(driver& drv) {
+  if (Init.size() != Size)
+    return (AllocaInst *)LogErrorV("Initialization array for " + Name + " is not the same size as binding array");
+
+  AllocaInst *alloc = CreateEntryBlockAlloca();  //< Base ptr for array
+  if (not alloc)
+    return (AllocaInst *)LogErrorV("Can't create stack array " + Name);
+
+  ArrayType *type = ArrayType::get(Type::getDoubleTy(*context), Size);
+  std:vector<Value *> initValues = {};
+
+  for (auto initParam: Init) {
+    initValues.push_back(initParam->codegen(drv));
+  }
+
+  Value *InitStore;
+  for (int i=0; i<initValues.size(); i++) {
+    Value *Index = llvm::ConstantInt::get(builder->getInt32Ty(), i);
+    Value *ElementPtr = builder->CreateInBoundsGEP(type, alloc, {builder->getInt32(0), Index});
+
+    InitStore = builder->CreateStore(initValues[i], ElementPtr);
+  }
+
+  drv.NamedValues[Name] = alloc;
+
+  return alloc;
+}
+
+
+ArrayExprAST::ArrayExprAST(std::string Name, ExprAST *Offset): Offset(Offset), VariableExprAST(Name) {}
+
+Value * ArrayExprAST::codegen(driver &drv) {
+  AllocaInst *A = drv.NamedValues[Name];
+
+  //  Compute the offset value
+  Value *offsetFloat = Offset->codegen(drv);
+
+  //  Cast to integer
+  Value *Index = builder->CreateFPToUI(offsetFloat, builder->getInt32Ty());
+
+  if (A) {
+    if (not A->isArrayAllocation())
+      return LogErrorV(Name + " is not an array type");
+
+    if (ArrayType *ArrType = dyn_cast<ArrayType>(A->getAllocatedType()); ArrType and not ArrType->getElementType()->isDoubleTy())
+      return LogErrorV(Name + " is not an array of doubles");
+    
+    Value *ElementPtr = builder->CreateInBoundsGEP(A->getAllocatedType(), A, {builder->getInt32(0), Index});
+    return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
+  }
+
+  if (GlobalVariable *G = module->getGlobalVariable(Name); G) {
+    if (not G->getValueType()->isArrayTy())
+      return LogErrorV("Global variable " + Name + " is not an array");
+
+    if (ArrayType *ArrType = dyn_cast<ArrayType>(G->getValueType()); ArrType and not ArrType->getElementType()->isDoubleTy())
+      return LogErrorV(Name + " is not an array of doubles");    
+
+    Value *ElementPtr = builder->CreateInBoundsGEP(G->getValueType(), G, {builder->getInt32(0), Index});
+    return builder->CreateLoad(Type::getDoubleTy(*context), ElementPtr, Name.c_str());
+  }
+
+  return LogErrorV("Undeclared array " + Name);
+}
+
+ArrayAssignmentAST::ArrayAssignmentAST(std::string Id, ExprAST *Offset, ExprAST *Value): AssignmentAST(Id, Value), Offset(Offset) {}
+
+Value * ArrayAssignmentAST::getVariable(driver &drv) {
+  Value *ptr = AssignmentAST::getVariable(drv);
+
+  //  Compute the offset value
+  Value *offsetFloat = Offset->codegen(drv);
+
+  //  Cast to integer
+  Value *Index = builder->CreateFPToUI(offsetFloat, builder->getInt32Ty());
+
+  Value *ElementPtr;  //< Contains the element pointer of base+offset
+
+  if (not ptr)
+    return LogErrorV("Undeclared identifier " + Id);
+
+  if (AllocaInst *basePtr = dyn_cast<AllocaInst>(ptr); basePtr) {
+    if (not basePtr->isArrayAllocation())
+      return LogErrorV(Id + " does not identify an array");
+
+    ElementPtr = builder->CreateInBoundsGEP(basePtr->getAllocatedType(), basePtr, {builder->getInt32(0), Index});
+  } else if (GlobalVariable *basePtr = dyn_cast<GlobalVariable>(ptr); basePtr) {
+    if (not basePtr->getValueType()->isArrayTy())
+      return LogErrorV("Global " + Id + "does not identify an array");
+
+    ElementPtr = builder->CreateInBoundsGEP(basePtr->getValueType(), basePtr, {builder->getInt32(0), Index});
+  }
+
+  return ElementPtr;
+}
+
+
+GlobalArrayAST::GlobalArrayAST(std::string Name, int Size): GlobalVarAST(Name), Size(Size) {}
+
+Type * GlobalArrayAST::getVariableType() {
+  return ArrayType::get(Type::getDoubleTy(*context), Size);
 }

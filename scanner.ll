@@ -33,7 +33,9 @@ blank   [ \t]
 {blank}+   loc.step ();
 [\n]+      loc.lines (yyleng); loc.step ();
 
+"--"      return yy::parser::make_DECREMENT(loc);
 "-"      return yy::parser::make_MINUS     (loc);
+"++"      return yy::parser::make_INCREMENT(loc);
 "+"      return yy::parser::make_PLUS      (loc);
 "*"      return yy::parser::make_STAR      (loc);
 "/"      return yy::parser::make_SLASH     (loc);
@@ -48,6 +50,11 @@ blank   [ \t]
 "="      return yy::parser::make_ASSIGN    (loc);
 "{"      return yy::parser::make_LBRACE    (loc);
 "}"      return yy::parser::make_RBRACE    (loc);
+"["      return yy::parser::make_LSQBRACK  (loc);
+"]"      return yy::parser::make_RSQBRACK  (loc);
+"and"    return yy::parser::make_AND       (loc);
+"or"     return yy::parser::make_OR        (loc);
+"not"    return yy::parser::make_NOT       (loc);
 
 {num}    { errno = 0;
            double n = strtod(yytext, NULL);
@@ -62,6 +69,7 @@ blank   [ \t]
 "global" { return yy::parser::make_GLOBAL(loc); }
 "var"    { return yy::parser::make_VAR(loc); }
 "if"     { return yy::parser::make_IF(loc); }
+"else"   { return yy::parser::make_ELSE(loc); }
 "for"    { return yy::parser::make_FOR(loc); }
 
 {id}     { return yy::parser::make_IDENTIFIER (yytext, loc); }

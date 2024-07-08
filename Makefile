@@ -1,6 +1,6 @@
 CXX := clang++
 CXXFLAGS := -std=c++17 -g -O0
-LLVM_INCLUDES := $(shell llvm-config --cxxflags)
+LLVM_INCLUDES := $(shell llvm-config --cxxflags | sed 's/-fno-exceptions//g')
 
 all: kcomp
 

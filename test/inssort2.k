@@ -6,7 +6,8 @@ global A[10];
 def inssort() {
    for (var i=1; i<10; ++i) {
        var pivot = A[i];
-       for (var j = i-1; -1<j and pivot<A[j] ; --j)
+       var j;
+       for (j = i-1; -1<j and pivot<A[j] ; --j)
            A[j+1] = A[j];
        A[j+1] = pivot
     }
